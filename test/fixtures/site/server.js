@@ -17,7 +17,7 @@ export async function startDemoSite() {
     const url = new URL(req.url, `http://${req.headers.host}`);
     let body = '';
     for await (const chunk of req) body += chunk;
-    received.push({ method: req.method, host, path: `${url.pathname}${url.search}`, body });
+    received.push({ method: req.method, host, path: `${url.pathname}${url.search}`, body, userAgent: req.headers['user-agent'] ?? '' });
     const key = `${host}${url.pathname}`;
     counters.set(key, (counters.get(key) ?? 0) + 1);
     const ctx = { host, path: url.pathname, query: url.searchParams, method: req.method, body, origin, options, hits: counters.get(key), userAgent: req.headers['user-agent'] ?? '' };
@@ -27,6 +27,7 @@ export async function startDemoSite() {
       res.end('not found');
       return;
     }
+    if (answer.hold) return; // a long-polling request that never answers
     const type = answer.type ?? (url.pathname.endsWith('.js') || answer.js ? 'text/javascript' : 'text/html; charset=utf-8');
     res.writeHead(answer.status ?? 200, { 'content-type': type, ...(answer.headers ?? {}) });
     res.end(answer.body ?? '');

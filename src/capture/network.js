@@ -63,6 +63,7 @@ export function createNetLog(ctx) {
     frames,
     transports,
     lastActivity: () => lastActivity,
+    reset() { requests.clear(); sockets.clear(); frames.length = 0; transports.length = 0; touch(); },
     // Requests still open, ignoring streams and anything open longer than longPollMs.
     inFlight(longPollMs) {
       const now = Date.now();

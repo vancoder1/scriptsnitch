@@ -16,7 +16,7 @@ ${head}</head><body><main id="main">${body}</main></body></html>`;
 export const pages = {
   '/': ({ origin }) => page({ origin, title: 'Demo shop', body: '<h1>Demo shop</h1><a href="/login">Sign in</a> <a href="/product/1">Shirt</a> <a href="/checkout">Checkout</a>' }),
   '/login': ({ origin }) => page({ origin, title: 'Sign in', body: '<form id="login" method="post" action="/login"><input type="email" name="email" id="email" required><input type="password" name="password" id="password" required><button type="submit" id="go">Sign in</button></form>' }),
-  '/product/1': ({ origin }) => page({ origin, title: 'Shirt', body: '<h1>Shirt</h1><button id="add-to-cart" onclick="document.cookie=\'cart=1;path=/\'">Add to cart</button>' }),
+  '/product/1': ({ origin }) => page({ origin, title: 'Shirt', body: '<h1>Shirt</h1><script>window.productPageOnly = true;</script><button id="add-to-cart" onclick="document.cookie=\'cart=1;path=/\'">Add to cart</button>' }),
   '/checkout': ({ origin }) => page({ origin, title: 'Checkout', body: `<h1>Checkout</h1><div id="payment"><iframe id="card-frame" src="${origin('pay.test')}/card"></iframe></div>` }),
 };
 

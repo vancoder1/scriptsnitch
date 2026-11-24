@@ -26,7 +26,11 @@ export function createScriptLog(ctx) {
       module: Boolean(p.isModule),
     });
   });
-  return { parsed, lastParsedAt: () => lastParsedAt };
+  return {
+    parsed,
+    lastParsedAt: () => lastParsedAt,
+    reset() { parsed.length = 0; lastParsedAt = Date.now(); },
+  };
 }
 
 const firstScriptId = (stack) => {

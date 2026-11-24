@@ -7,7 +7,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-24.04, windows-2025, macos-15]
+        os: [windows-2025]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     steps:
@@ -22,7 +22,7 @@ jobs:
           import { existsSync, mkdtempSync } from 'node:fs';
           import { tmpdir } from 'node:os'; import { join } from 'node:path';
           const cands = { linux: ['/usr/bin/google-chrome','/usr/bin/google-chrome-stable','/opt/google/chrome/chrome','/usr/bin/chromium','/usr/bin/chromium-browser'],
-            win32: ['C:\Program Files\Google\Chrome\Application\chrome.exe','C:\Program Files (x86)\Google\Chrome\Application\chrome.exe'],
+            win32: ['C:/Program Files/Google/Chrome/Application/chrome.exe','C:/Program Files (x86)/Google/Chrome/Application/chrome.exe'],
             darwin: ['/Applications/Google Chrome.app/Contents/MacOS/Google Chrome','/Applications/Chromium.app/Contents/MacOS/Chromium'] }[process.platform];
           console.log('candidates present:', cands.map(c => `${c}=${existsSync(c)}`).join(' | '));
           const exe = cands.find(existsSync);

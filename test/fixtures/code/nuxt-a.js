@@ -1,0 +1,1 @@
+window.__NUXT__=(function(a,b,c){return {data:[{title:a,price:b}],state:{cart:c},serverRendered:true}}("Shirt",19.99,[]));

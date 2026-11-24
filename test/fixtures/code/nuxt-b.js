@@ -1,0 +1,1 @@
+window.__NUXT__=(function(a,b,c,d){return {data:[{title:a,price:b},{title:c,price:d}],state:{cart:[]},serverRendered:true}}("Hat",9.5,"Scarf",29));

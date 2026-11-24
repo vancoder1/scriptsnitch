@@ -1,0 +1,1 @@
+window.__NEXT_DATA__ = {"props":{"pageProps":{"products":[{"id":1,"title":"Shirt","price":19.99,"image":"https://cdn.shop.example/i/1.jpg"},{"id":2,"title":"Hat","price":9.5,"image":"https://cdn.shop.example/i/2.jpg"}]}},"page":"/","buildId":"abc123"};

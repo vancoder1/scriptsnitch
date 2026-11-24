@@ -1,0 +1,3 @@
+/* <![CDATA[ */
+var wc_checkout_params = {"ajax_url":"/wp-admin/admin-ajax.php","wc_ajax_url":"/?wc-ajax=%%endpoint%%","update_order_review_nonce":"9f8e7d6c5b","apply_coupon_nonce":"0a9b8c7d6e","remove_coupon_nonce":"5544332211","option_guest_checkout":"yes","checkout_url":"/?wc-ajax=checkout","is_checkout":"1","debug_mode":"","i18n_checkout_error":"Error processing checkout. Please try again."};
+/* ]]> */

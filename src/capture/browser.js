@@ -14,7 +14,8 @@ export async function openBrowser({ executable, allowNoSandbox = false, extraArg
 
   conn.on('Target.attachedToTarget', (params, parentSessionId) => {
     const { sessionId, targetInfo } = params;
-    const ctx = contexts.get(targetInfo.browserContextId);
+    // Children attached through a page session may not name their browser context; their parent does.
+    const ctx = contexts.get(targetInfo.browserContextId) ?? [...contexts.values()].find((c) => c.sessions.has(parentSessionId));
     const keep = ctx && KEPT_TYPES.has(targetInfo.type) && KEPT_URL.test(targetInfo.url || 'about:blank');
     if (!keep) {
       conn.send('Runtime.runIfWaitingForDebugger', {}, sessionId).catch(() => {});
@@ -46,7 +47,8 @@ function createContext(conn, browserContextId, forget) {
 
   unsubscribe.push(conn.on('Page.frameNavigated', ({ frame }, sessionId) => {
     const s = sessions.get(sessionId);
-    if (s && !frame.parentId) s.url = frame.url;
+    // A page's root frame has no parent; an out-of-process iframe's root frame has the target's id.
+    if (s && (!frame.parentId || frame.id === s.targetId)) s.url = frame.url;
   }));
 
   const ctx = {

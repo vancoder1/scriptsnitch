@@ -6,6 +6,7 @@ import { createNetLog } from './network.js';
 import { profileFor, applyProfile } from './profiles.js';
 import { settle, scrollToBottom } from './settle.js';
 import { runSteps, navigate } from './steps.js';
+import { readDom } from './dom.js';
 
 export const newCache = () => ({ sources: new Map(), bodies: new Map(), analysis: new Map() });
 
@@ -51,7 +52,7 @@ async function load(ctx, session, page, profile, logs, env) {
   return first.timedOut && logs.scripts.parsed.length === 0 ? 'timed out' : null;
 }
 
-export async function visitPage(browser, page, profileName, { role = 'A', own = new Set([page.site]), frames: framesMode = 'own', cache = newCache(), env = process.env, random = Math.random } = {}) {
+export async function visitPage(browser, page, profileName, { role = 'A', own = new Set([page.site]), frames: framesMode = 'own', cache = newCache(), env = process.env, random = Math.random, extraSelectors = {} } = {}) {
   const profile = profileFor(profileName, { chromeVersion: browser.version, random });
   const ctx = await browser.newContext();
   ctx.onSession(async (s) => {
@@ -113,21 +114,22 @@ export async function visitPage(browser, page, profileName, { role = 'A', own = 
       if (r.type === 'Document' && r.sessionId === session.id && (r.frameId === mainFrameId || !r.frameId)) doc = r;
     }
     const finalUrl = frames.get(mainFrameId)?.url ?? page.url;
+    const dom = reason ? null : await readDom(ctx, { own, framesMode, extraSelectors, refOf: built.rootRefOf });
 
     const visit = {
       role,
       conclusive: !reason,
       reason,
-      document: { status: doc?.status ?? 0, finalUrl, headers: doc?.responseHeaders ?? {}, metaCsp: [] },
+      document: { status: doc?.status ?? 0, finalUrl, headers: doc?.responseHeaders ?? {}, metaCsp: dom?.metaCsp ?? [] },
       consent: { found: null, accepted: false },
       scripts: reason ? [] : built.scripts,
       destinations: reason ? [] : destinations,
-      frames: [],
-      fields: [],
-      listeners: [],
+      frames: dom?.frames ?? [],
+      fields: dom?.fields ?? [],
+      listeners: dom?.listeners ?? [],
       inputCode: [],
       peers: 0,
-      linkHosts: [],
+      linkHosts: dom?.linkHosts ?? [],
       probe: null,
     };
     Object.defineProperty(visit, 'sources', { value: built.sources, enumerable: false });

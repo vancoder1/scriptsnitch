@@ -5,6 +5,7 @@ import { clickNode, typeText } from './steps.js';
 import { countPeers } from './peers.js';
 import { attrs } from './dom.js';
 import { findValues } from '../analyze/probe-match.js';
+import { internal } from './internal.js';
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const OFFLINE = { offline: true, latency: 0, downloadThroughput: -1, uploadThroughput: -1 };
@@ -85,7 +86,7 @@ async function submitForm(ctx, sessionId, formNodeId, lastField, touch) {
     const { nodeId } = await ctx.send('DOM.querySelector', { nodeId: formNodeId, selector: 'button[type=submit], input[type=submit], input[type=image], button:not([type])' }, sessionId).catch(() => ({ nodeId: 0 }));
     if (nodeId) return clickNode(ctx, sessionId, nodeId, { touch }).then(() => true, () => false);
     const { object } = await ctx.send('DOM.resolveNode', { nodeId: formNodeId }, sessionId).catch(() => ({}));
-    if (object) return ctx.send('Runtime.callFunctionOn', { objectId: object.objectId, functionDeclaration: 'function () { this.requestSubmit(); }' }, sessionId).then(() => true, () => false);
+    if (object) return ctx.send('Runtime.callFunctionOn', { objectId: object.objectId, functionDeclaration: internal('function () { this.requestSubmit(); }') }, sessionId).then(() => true, () => false);
   }
   if (lastField) {
     await ctx.send('DOM.focus', { nodeId: lastField }, sessionId).catch(() => {});

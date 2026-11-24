@@ -5,6 +5,7 @@ import { sha256Hex, sha384Base64 } from '../util/hash.js';
 import { templateOf } from '../analyze/template.js';
 import { extractHostnames } from '../analyze/hostnames.js';
 import { obfuscationBand } from '../analyze/obfuscation.js';
+import { isInternal } from './internal.js';
 
 const INTERNAL = /^(chrome|chrome-extension|chrome-untrusted|devtools|extensions)(:|::)/i;
 
@@ -55,7 +56,7 @@ export async function buildScripts(ctx, scriptLog, netLog, { frameOf, docUrls, i
       source = await ctx.send('Debugger.getScriptSource', { scriptId: p.scriptId }, p.sessionId).then((r) => r.scriptSource ?? '', () => null);
       if (source !== null) cache.sources.set(cacheKey, source);
     }
-    if (source === null) continue;
+    if (source === null || isInternal(source)) continue;
     const creatorId = firstScriptId(p.stack);
     let kind;
     if (p.wasm || /^(blob|data):/i.test(p.url)) kind = 'code';

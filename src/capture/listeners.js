@@ -1,6 +1,7 @@
 // Who listens to sensitive fields (design §7 "Listeners"): the field, every ancestor up to the
 // document (crossing shadow-root hosts), the form's submit buttons, and the window. Chrome answers
 // through DOMDebugger.getEventListeners, which the page cannot observe.
+import { internal } from './internal.js';
 
 export const FIELD_EVENTS = new Set([
   'keydown', 'keyup', 'keypress', 'input', 'beforeinput', 'change', 'focus', 'blur', 'focusin', 'focusout',
@@ -53,7 +54,7 @@ export async function collectListeners(ctx, sessionId, fields, tree, refOf) {
         stack.push(...(node.children ?? []), ...(node.shadowRoots ?? []));
       }
     }
-    const win = await listenersOf('window', () => ctx.send('Runtime.evaluate', { expression: 'window', objectGroup: GROUP }, sessionId).then((r) => r.result.objectId));
+    const win = await listenersOf('window', () => ctx.send('Runtime.evaluate', { expression: internal('window'), objectGroup: GROUP }, sessionId).then((r) => r.result.objectId));
     add(field.kind, 'window', WINDOW_EVENTS, win);
   }
   await ctx.send('Runtime.releaseObjectGroup', { objectGroup: GROUP }, sessionId).catch(() => {});

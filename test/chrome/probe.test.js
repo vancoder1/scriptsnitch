@@ -100,3 +100,10 @@ test('counts a peer connection', async (t) => {
   const { visit } = await probe('webrtc');
   assert.ok(visit.peers >= 1);
 });
+
+test("scriptsnitch's own helper code is never reported as the page's", async (t) => {
+  if (!browser) return t.skip('no Chrome');
+  const { visit } = await probe('baseline');
+  assert.deepEqual(visit.inputCode.filter((r) => !r.url && !r.template), [], 'no code without a URL or a creator ran during the input');
+  assert.deepEqual(visit.scripts.filter((s) => s.kind === 'code' && !s.creator), []);
+});

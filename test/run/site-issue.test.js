@@ -128,3 +128,12 @@ test('a first-run issue says nothing is approved yet', async () => {
   await step(gh, 0, [{ ...M1, firstRun: true }]);
   assert.match(issuesFor(gh)[0].body, /Nothing is approved for this site yet/);
 });
+
+test('a finding with no page (a domain finding) counts as missed on every run it is absent', async () => {
+  const gh = createFakeGitHub();
+  const domain = { kind: 'domain-expiring', key: 'domain-expiring|widgets.com|*', severity: 'medium', site: SITE, page: '*', profiles: [], subject: 'widgets.com', reasons: ['expires in 10 days'], evidence: [], seenOn: [], firstRun: false };
+  await step(gh, 0, [domain]);
+  await step(gh, 1, [], { conclusive: new Set() });
+  await step(gh, 2, [], { conclusive: new Set() });
+  assert.equal(issuesFor(gh)[0].state, 'closed');
+});

@@ -78,7 +78,8 @@ export async function reconcileSite(github, { site, issue = null, siteState = nu
   for (const [k, e] of Object.entries(st.findings)) {
     if (live.has(k) || e.droppedAt) continue;
     const pairs = (e.seenOn.length ? e.seenOn : [e.page]).flatMap((p) => (e.profiles.length ? e.profiles : ['desktop']).map((pr) => `${p}|${pr}`));
-    if (pairs.every((x) => run.conclusive.has(x))) e.missed += 1;
+    // A finding with no page (a domain finding) is absent only when a check no longer raised it.
+    if (!e.seenOn.length || pairs.every((x) => run.conclusive.has(x))) e.missed += 1;
     if (e.severity !== 'high' && e.missed >= 2) e.droppedAt = today;
   }
 

@@ -5,7 +5,8 @@
 //     pages: { "<site><path>|<profile>": { lastConclusiveRun, inconclusiveStreak } },
 //     sites: { [site]: { entrySlots: { [slot]: token }, marker, ownHashes: { [url]: short },
 //                        inline: { [path]: short[] }, deployTokens: [token], seen: { [entryId]: run },
-//                        domains: { [domain]: { registrar, registered, expires } }, domainCheck } },
+//                        domains: { [domain]: { registrar, registered, expires } }, domainCheck,
+//                        domainFindings: [the last domain check's findings, repeated until the next] } },
 //     sightings: { [findingKey]: [run, ...] },
 //     log: [[isoDate, conclusivePages, high, medium, drill]] }
 //
@@ -21,6 +22,6 @@ export function emptySiteState(site) {
 }
 
 export function siteState(status, site) {
-  status.sites[site] ??= { entrySlots: null, marker: null, ownHashes: {}, inline: {}, deployTokens: [], seen: {}, domains: {}, domainCheck: null };
+  status.sites[site] ??= { entrySlots: null, marker: null, ownHashes: {}, inline: {}, deployTokens: [], seen: {}, domains: {}, domainCheck: null, domainFindings: [] };
   return status.sites[site];
 }

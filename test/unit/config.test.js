@@ -57,6 +57,7 @@ test('rejects plain http except for local test hosts', () => {
   assert.equal(pointerOf(() => parse({ pages: [{ name: 'x', url: 'http://shop.example/' }] })), '/pages/0/url');
   assert.equal(parse({ pages: [{ name: 'x', url: 'http://shop.test:8080/' }] }).pages[0].site, 'http://shop.test:8080');
   assert.equal(parse({ pages: [{ name: 'x', url: 'http://localhost:3000/' }] }).pages[0].path, '/');
+  assert.equal(parse({ pages: [{ name: 'x', url: 'http://shop.localhost:8123/' }] }).pages[0].site, 'http://shop.localhost:8123');
 });
 
 test('expect is a selector or a text, never both', () => {
@@ -78,4 +79,8 @@ test('loads with a BOM and CRLF, and names the line of a syntax error', () => {
 
 test('needs at least one page', () => {
   assert.equal(pointerOf(() => parse({ pages: [] })), '/pages');
+});
+
+test('plain http is refused for look-alike hosts', () => {
+  for (const url of ['http://127x0x0x1/', 'http://shoptest/', 'http://1/', 'http://evil-localhost.example/']) assert.equal(pointerOf(() => parse({ pages: [{ name: 'x', url }] })), '/pages/0/url', url);
 });

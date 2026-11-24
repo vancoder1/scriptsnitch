@@ -12,14 +12,14 @@ export class ConfigError extends Error {
   }
 }
 
-const LOCAL_HTTP_HOST = /^(localhost|127\.0\.0\.1|\[::1\]|[a-z0-9-]+(\.[a-z0-9-]+)*\.test)$/i;
+const LOCAL_HTTP_HOST = /^(localhost|127\.0\.0\.1|\[::1\]|[a-z0-9-]+(\.[a-z0-9-]+)*\.(test|localhost))$/i;
 
 function checkPageUrl(url) {
   let u;
   try { u = new URL(url); } catch { return `"${url}" is not a URL`; }
   if (u.protocol === 'https:') return null;
   if (u.protocol === 'http:' && LOCAL_HTTP_HOST.test(u.hostname)) return null;
-  return `"${url}" must use https (plain http is only accepted for localhost and *.test hosts)`;
+  return `"${url}" must use https (plain http is only accepted for localhost, *.localhost and *.test hosts)`;
 }
 
 function checkOrigin(origin) {

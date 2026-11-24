@@ -2,6 +2,7 @@
 // reads no GitHub state and never writes to GitHub. Exit codes: 0 nothing unapproved, 1 High or
 // Medium findings, 2 no findings but some page inconclusive, 3 error.
 import { resolve, join } from 'node:path';
+import { mkdirSync, writeFileSync } from 'node:fs';
 import { loadConfig, ConfigError } from './config/config.js';
 import { loadApproved, emptyApproved, ApprovedError, UnknownPendingError } from './config/approved.js';
 import { findChrome, ChromeNotFoundError } from './chrome/find.js';
@@ -15,6 +16,9 @@ import { report } from './modes/report.js';
 import { createGitHub } from './report/github.js';
 import { readStatus } from './report/status-issue.js';
 import { formatSummary } from './report/summary.js';
+import { evidencePack, approvalHistoryFromGit } from './modes/evidence.js';
+import { emptyStatusState } from './state.js';
+import { isoDate } from './util/time.js';
 import { VERSION } from './version.js';
 
 export const USAGE = `Usage: scriptsnitch <command> [options]
@@ -29,6 +33,8 @@ Commands:
                                   Judge the out directory's snapshot and update the issues and
                                   approval pull requests (needs GITHUB_TOKEN)
   validate                        Check the config and the approved file
+  evidence [--since YYYY-MM-DD] [--until YYYY-MM-DD] [--github owner/repo]
+                                  Write an evidence pack for an assessor into the out directory
   approve --id <key> [--reason <text>] | --all | --headers
                                   Edit the approved file: move one pending item, add every
                                   routine proposal of the last check, or adopt current headers
@@ -43,7 +49,7 @@ Options:
 Exit codes: 0 nothing unapproved, 1 High or Medium findings, 2 some page inconclusive, 3 error.
 `;
 
-const VALUE_FLAGS = new Set(['config', 'out', 'chrome', 'id', 'reason', 'github', 'fail-on', 'propose']);
+const VALUE_FLAGS = new Set(['config', 'out', 'chrome', 'id', 'reason', 'github', 'fail-on', 'propose', 'since', 'until']);
 const BOOL_FLAGS = new Set(['probe', 'json', 'all', 'headers', 'force', 'drill', 'allow-no-sandbox', 'help', 'version', 'dry-run']);
 const CHOICES = { 'fail-on': ['never', 'medium', 'high'], propose: ['pr', 'issue'] };
 
@@ -66,6 +72,7 @@ function parseArgs(argv) {
   for (const [name, allowed] of Object.entries(CHOICES)) {
     if (flags[name] !== undefined && !allowed.includes(flags[name])) throw new UsageError(`--${name} must be ${allowed.join(', ')}`);
   }
+  for (const name of ['since', 'until']) if (flags[name] !== undefined && !/^\d{4}-\d{2}-\d{2}$/.test(flags[name])) throw new UsageError(`--${name} takes a date as YYYY-MM-DD`);
   if (flags.github !== undefined && !/^[\w.-]+\/[\w.-]+$/.test(flags.github)) throw new UsageError('--github takes owner/repo');
   return { command: positional[0], args: positional.slice(1), flags };
 }
@@ -129,6 +136,19 @@ export async function runCli(argv, { stdout = process.stdout, stderr = process.s
         });
         print(`scriptsnitch: ${r.high} High and ${r.medium} Medium open, ${r.inconclusive} inconclusive${flags['dry-run'] ? ' (dry run: nothing was changed on GitHub)' : ''}`);
         return r.exitCode;
+      }
+      case 'evidence': {
+        const { config, approved } = loaded();
+        const until = flags.until ?? isoDate(Date.now());
+        const since = flags.since ?? isoDate(Date.parse(until) - 365 * 86400000);
+        const state = flags.github ? (await readStatus(github().client)).state : null;
+        let history = [];
+        try { history = await approvalHistoryFromGit(config.approved, { cwd }); } catch (e) { stderr.write(`scriptsnitch: no git history for ${config.approved}, so approvals are not listed (${String(e.message).split('\n')[0]})\n`); }
+        mkdirSync(outDir, { recursive: true });
+        const file = join(outDir, `evidence-${until}.md`);
+        writeFileSync(file, evidencePack({ approved, approvalHistory: history, statusState: state ?? emptyStatusState(), since, until, generatedAt: isoDate(Date.now()) }));
+        print(`Wrote ${file}${state ? '' : ' (no run log: add --github owner/repo to include it)'}`);
+        return 0;
       }
       case 'validate': {
         const r = validateMode({ configPath, cwd });

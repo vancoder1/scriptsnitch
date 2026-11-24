@@ -328,3 +328,11 @@ test('a probe value leaked in a link host name is probe-exfil, keyed without the
   ].sort());
   assert.ok(r.findings.every((f) => f.severity === 'high'));
 });
+
+test('a value hit and a growing payload to the same endpoint are one finding, whatever the query', () => {
+  const appr = approved({ scripts: [appEntry({ input: true })], destinations: [{ match: 'https://c2.example', pages: ['**', '/login'], reason: 'r', approved: '2026-11-01' }] });
+  const url = 'https://c2.example/p?tid=x&d=MTIzNDU2Nzg5MA';
+  const p = { values: { password: 'pw-123456' }, submitted: true, hits: [{ kind: 'password', encoding: 'base64', url, frame: 'top', initiator: null }], growth: [{ url: 'https://c2.example/p', field: 'query:d' }], storage: [] };
+  const r = run(withProbe('/login', [ext(APP)], { destinations: [dest(url, { phase: 'probe' })], probe: p }, { sensitive: true }), appr);
+  assert.deepEqual(r.findings.filter((f) => f.kind === 'probe-exfil').map((f) => f.subject), ['GET https://c2.example/p']);
+});

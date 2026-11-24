@@ -127,8 +127,11 @@ export function endpointOf(url, method) {
 function judgeProbe(ctx, page, profile, v, id) {
   if (!v.probe) return;
   const base = { site: ctx.site, profile, path: page.path, visits: [id] };
-  const methodOf = (url) => v.destinations.find((d) => d.url === url)?.method ?? 'POST';
-  const covering = (url) => coveringDestinations(url, methodOf(url), ctx.section, page.path, page.sensitive);
+  // The visit's own request to the same origin and path: growth records carry no query.
+  const bare = (url) => { try { const u = new URL(url); return `${u.origin}${u.pathname}`; } catch { return url; } };
+  const requestOf = (url) => v.destinations.find((d) => d.url === url) ?? v.destinations.find((d) => bare(d.url) === bare(url)) ?? { url, method: 'POST' };
+  const methodOf = (url) => requestOf(url).method;
+  const covering = (url) => coveringDestinations(requestOf(url).url, methodOf(url), ctx.section, page.path, page.sensitive);
   for (const h of v.probe.hits) {
     let u;
     try { u = new URL(h.url); } catch { u = null; }
@@ -145,7 +148,7 @@ function judgeProbe(ctx, page, profile, v, id) {
   for (const g of v.probe.growth) {
     const entries = covering(g.url);
     if (entries.some((e) => e.receives?.length)) continue;
-    const endpoint = endpointOf(g.url, methodOf(g.url));
+    const endpoint = endpointOf(requestOf(g.url).url, methodOf(g.url));
     ctx.add({ ...base, kind: 'probe-exfil', subject: endpoint, severity: 'high', reasons: [`the ${g.field || 'body'} of a request to ${endpoint} grew with the length of the values typed, as an encrypted copy would`], evidence: [clip(g.url)], data: { url: g.url, endpoint, kinds: typed.length ? typed : ['card'], approvable: true, page: page.path } });
   }
   for (const s of v.probe.storage) {

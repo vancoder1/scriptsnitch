@@ -1,0 +1,18 @@
+# With the two-job setup: the check that makes approval pull requests carry a reason for every
+# entry (PCI DSS 6.4.3). Mark it as required in your branch protection.
+name: scriptsnitch validate
+
+on:
+  pull_request: { paths: ['scriptsnitch/**'] }
+
+permissions: { contents: read }
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: vancoder1/scriptsnitch@v1
+        with: { mode: validate }

@@ -1,0 +1,23 @@
+name: Self-test (reusable workflow)
+
+# Calls the reusable workflow at this commit, in dry run, against a public page: collect, the
+# artifact hand-off and report. Nothing is changed on GitHub.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# The reusable workflow's jobs ask for these; a dry run uses only the reads.
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  actions: read
+
+jobs:
+  reusable:
+    uses: ./.github/workflows/scriptsnitch.yml
+    with:
+      config: .github/self-test/public.json
+      dry-run: true

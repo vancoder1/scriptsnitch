@@ -1,0 +1,7 @@
+{
+  "approved": ".github/self-test/approved.json",
+  "pages": [
+    { "name": "Home", "url": "http://shop.localhost:8123/", "expect": { "selector": "#main" } },
+    { "name": "Sign in", "url": "http://shop.localhost:8123/login", "sensitive": true, "expect": { "selector": "form#login" } }
+  ]
+}

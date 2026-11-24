@@ -1,0 +1,18 @@
+# The simplest setup: copy this file to .github/workflows/scriptsnitch.yml. It calls the reusable
+# workflow, which collects and reports on the schedule, validates approval pull requests and
+# handles /scriptsnitch comments. Put your pages in scriptsnitch/config.json (examples/config.json).
+name: scriptsnitch
+
+on:
+  schedule: [{ cron: '17 6 * * *' }]
+  push: { branches: [main], paths: ['scriptsnitch/**'] }
+  pull_request: { paths: ['scriptsnitch/**'] }
+  issue_comment: { types: [created] }
+  workflow_dispatch:
+
+permissions: { contents: write, issues: write, pull-requests: write, actions: read }
+
+jobs:
+  scriptsnitch:
+    uses: vancoder1/scriptsnitch/.github/workflows/scriptsnitch.yml@v1
+    secrets: { step-secrets: '${{ secrets.SCRIPTSNITCH_STEP_SECRETS }}' }

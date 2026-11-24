@@ -1,0 +1,6 @@
+# job.workflow_repository and job.workflow_sha (April 2026) are newer than actionlint 1.7.12.
+# The reusable workflow uses them to check scriptsnitch out at its own commit.
+paths:
+  .github/workflows/scriptsnitch.yml:
+    ignore:
+      - 'property "workflow_(repository|sha)" is not defined'

@@ -1,0 +1,5 @@
+{
+  "approved": ".github/self-test/public-approved.json",
+  "profiles": ["desktop"],
+  "pages": [{ "name": "Example", "url": "https://example.com/" }]
+}

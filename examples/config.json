@@ -1,0 +1,19 @@
+{
+  "approved": "scriptsnitch/approved.json",
+  "notify": ["octocat"],
+  "sites": { "https://shop.example": { "deployMarker": { "url": "https://shop.example/version.txt" } } },
+  "pages": [
+    { "name": "Home", "url": "https://shop.example/", "expect": { "selector": "#main" } },
+    { "name": "Sign in", "url": "https://shop.example/login", "sensitive": true, "expect": { "selector": "form#login" } },
+    {
+      "name": "Checkout",
+      "url": "https://shop.example/checkout",
+      "sensitive": true,
+      "expect": { "selector": "#payment" },
+      "steps": [
+        { "goto": "https://shop.example/product/1" },
+        { "click": "#add-to-cart" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,213 @@
+name: scriptsnitch
+
+# The reusable workflow. Call it from your repository (examples/scriptsnitch.yml):
+#
+#   jobs:
+#     scriptsnitch:
+#       uses: vancoder1/scriptsnitch/.github/workflows/scriptsnitch.yml@v1
+#       secrets: { step-secrets: '${{ secrets.SCRIPTSNITCH_STEP_SECRETS }}' }
+#
+# The event decides which jobs run: a schedule, a push or a manual run collects and reports; a pull
+# request validates the approved file; an issue comment starting with /scriptsnitch runs the
+# comment command. Each job keeps only the permissions it needs. The action is checked out at this
+# workflow's own commit, so the workflow and the action always match.
+
+on:
+  workflow_call:
+    inputs:
+      config:
+        description: Path to the config file.
+        type: string
+        default: scriptsnitch/config.json
+      fail-on:
+        description: "never, medium or high: fail the report job while such findings are open."
+        type: string
+        default: never
+      propose:
+        description: "pr or issue: how approvals are proposed."
+        type: string
+        default: pr
+      drill:
+        description: "auto (a fire drill on the first day of each month), true or false."
+        type: string
+        default: auto
+      jitter:
+        description: Wait a random number of minutes, up to this many, before collecting.
+        type: number
+        default: 0
+      dry-run:
+        description: Judge and write the job summary, but change nothing on GitHub.
+        type: boolean
+        default: false
+    secrets:
+      step-secrets:
+        description: 'A JSON object of the environment variables your page steps use, such as {"SHOP_PASSWORD": "…"}. Passed to the collect step only.'
+        required: false
+
+permissions: {}
+
+jobs:
+  collect:
+    if: github.event_name != 'pull_request' && github.event_name != 'issue_comment'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check out scriptsnitch at this workflow's commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .scriptsnitch-action
+          persist-credentials: false
+
+      - name: Make sure the action is this workflow's commit
+        env:
+          WANT: ${{ job.workflow_sha }}
+        run: |
+          # An empty ref would silently check out the default branch.
+          test -n "$WANT" || { echo "::error::job.workflow_sha is empty; this workflow needs GitHub.com"; exit 1; }
+          test "$(git -C .scriptsnitch-action rev-parse HEAD)" = "$WANT"
+
+      - name: Decide on a fire drill
+        id: drill
+        env:
+          DRILL: ${{ inputs.drill }}
+        run: |
+          case "$DRILL" in
+            auto) if [ "$(date -u +%d)" = 01 ]; then echo "drill=true" >> "$GITHUB_OUTPUT"; else echo "drill=false" >> "$GITHUB_OUTPUT"; fi ;;
+            true|false) echo "drill=$DRILL" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::the drill input is auto, true or false"; exit 1 ;;
+          esac
+
+      - name: Collect
+        uses: ./.scriptsnitch-action
+        with:
+          mode: collect
+          config: ${{ inputs.config }}
+          drill: ${{ steps.drill.outputs.drill }}
+          jitter: ${{ inputs.jitter }}
+        env:
+          SCRIPTSNITCH_STEP_SECRETS: ${{ secrets.step-secrets }}
+
+      - name: Keep the snapshot and evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: scriptsnitch
+          path: scriptsnitch-out/
+          retention-days: 30
+          if-no-files-found: ignore
+
+  report:
+    needs: collect
+    if: always() && needs.collect.result != 'skipped'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+      actions: read
+    concurrency:
+      group: scriptsnitch-report
+      cancel-in-progress: false
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check out scriptsnitch at this workflow's commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .scriptsnitch-action
+          persist-credentials: false
+
+      - name: Make sure the action is this workflow's commit
+        env:
+          WANT: ${{ job.workflow_sha }}
+        run: |
+          test -n "$WANT" || { echo "::error::job.workflow_sha is empty; this workflow needs GitHub.com"; exit 1; }
+          test "$(git -C .scriptsnitch-action rev-parse HEAD)" = "$WANT"
+
+      - name: Fetch the snapshot
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        continue-on-error: true
+        with:
+          name: scriptsnitch
+          path: scriptsnitch-out/
+
+      - name: Report
+        uses: ./.scriptsnitch-action
+        with:
+          mode: report
+          config: ${{ inputs.config }}
+          fail-on: ${{ inputs.fail-on }}
+          propose: ${{ inputs.propose }}
+          dry-run: ${{ inputs.dry-run }}
+
+  validate:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check out scriptsnitch at this workflow's commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .scriptsnitch-action
+          persist-credentials: false
+
+      - name: Validate
+        uses: ./.scriptsnitch-action
+        with:
+          mode: validate
+          config: ${{ inputs.config }}
+
+  command:
+    if: github.event_name == 'issue_comment' && !github.event.issue.pull_request && startsWith(github.event.comment.body, '/scriptsnitch')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    concurrency:
+      group: scriptsnitch-report
+      cancel-in-progress: false
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Check out scriptsnitch at this workflow's commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: ${{ job.workflow_repository }}
+          ref: ${{ job.workflow_sha }}
+          path: .scriptsnitch-action
+          persist-credentials: false
+
+      - name: Handle the comment
+        uses: ./.scriptsnitch-action
+        with:
+          mode: command
+          config: ${{ inputs.config }}

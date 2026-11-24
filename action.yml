@@ -8,8 +8,58 @@ branding:
 
 inputs:
   mode:
-    description: "What to run: collect, report, validate, command, evidence or check."
+    description: "What to run: collect (visit the pages, write a snapshot), report (judge it, update issues and pull requests), validate, command (approve by comment), evidence, or check (collect and judge in one job)."
     required: true
+  drill:
+    description: "Collect only: add a harmless test skimmer in one extra visit per sensitive page, to prove detection works."
+    required: false
+    default: "false"
+  config:
+    description: Path to the config file.
+    required: false
+    default: scriptsnitch/config.json
+  out:
+    description: Directory for the snapshot, evidence, report.json and diffs.
+    required: false
+    default: scriptsnitch-out
+  github-token:
+    description: Token for report, check, command and evidence. Collect and validate never see it.
+    required: false
+    default: ${{ github.token }}
+  propose:
+    description: "How approvals are proposed: pr (a pull request per site) or issue (the edits shown in the site issue)."
+    required: false
+    default: pr
+  dry-run:
+    description: "Report and check: judge everything and write report.json and the job summary, but change nothing on GitHub."
+    required: false
+    default: "false"
+  fail-on:
+    description: "Report and check: never, medium or high. Fail the step while findings of that severity or worse are open."
+    required: false
+    default: never
+  chrome-path:
+    description: Path to Chrome or Chromium. Found automatically on GitHub-hosted runners.
+    required: false
+    default: ""
+  allow-no-sandbox:
+    description: "Run Chrome without its sandbox. Only for runners where the sandbox cannot work, such as some containers."
+    required: false
+    default: "false"
+  jitter:
+    description: "Collect only: wait a random number of minutes, up to this many (0-60), before visiting, so checks do not always come at the same minute. Billed on private repositories."
+    required: false
+    default: "0"
+
+outputs:
+  high:
+    description: Number of open High findings (report and check).
+  medium:
+    description: Number of open Medium findings (report and check).
+  inconclusive:
+    description: Number of pages and profiles that could not be checked this run.
+  snapshot:
+    description: Path of the snapshot written (collect and check).
 
 runs:
   using: node24

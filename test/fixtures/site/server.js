@@ -1,10 +1,13 @@
 // The demo site the tests visit: one node:http server answering for shop.test, cdn.test, pay.test,
 // evil.test and tags.test (Chrome maps *.test to 127.0.0.1). A scenario module decides the answers;
-// everything the server receives is recorded, so tests can prove nothing left the browser.
+// everything the server receives is recorded, so tests can prove nothing left the browser. With
+// { tld: 'localhost' } it answers shop.localhost and so on instead, names Chrome resolves to the
+// loopback address without any flag (the self-test workflow runs the action that way); scenarios
+// still see the .test names.
 import http from 'node:http';
 import crypto from 'node:crypto';
 
-export async function startDemoSite() {
+export async function startDemoSite({ tld = 'test', port: wanted = 0 } = {}) {
   let scenario = null;
   let scenarioName = '';
   let options = {};
@@ -13,7 +16,7 @@ export async function startDemoSite() {
   const counters = new Map();
 
   const server = http.createServer(async (req, res) => {
-    const host = (req.headers.host ?? '').split(':')[0];
+    const host = (req.headers.host ?? '').split(':')[0].replace(/\.localhost$/, '.test');
     const url = new URL(req.url, `http://${req.headers.host}`);
     let body = '';
     for await (const chunk of req) body += chunk;
@@ -48,10 +51,10 @@ export async function startDemoSite() {
     socket.on('error', () => {});
   });
 
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  await new Promise((resolve) => server.listen(wanted, '127.0.0.1', resolve));
   const port = server.address().port;
   function origin(host) {
-    return `http://${host}:${port}`;
+    return `http://${tld === 'test' ? host : host.replace(/\.test$/, `.${tld}`)}:${port}`;
   }
 
   return {

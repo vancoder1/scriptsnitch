@@ -1,0 +1,44 @@
+# The same as examples/scriptsnitch.yml, written out as two jobs, for people who want to see or
+# change every step. The collect job never holds more than read access.
+name: scriptsnitch
+
+on:
+  schedule: [{ cron: '17 6 * * *' }]
+  push: { branches: [main], paths: ['scriptsnitch/**'] }
+  workflow_dispatch:
+
+concurrency: { group: scriptsnitch }
+
+permissions: {}
+
+jobs:
+  collect:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions: { contents: read }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: vancoder1/scriptsnitch@v1
+        with: { mode: collect }
+        env:
+          # Only if your pages have sign-in steps: a JSON object of the variables they name.
+          SCRIPTSNITCH_STEP_SECRETS: ${{ secrets.SCRIPTSNITCH_STEP_SECRETS }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with: { name: scriptsnitch, path: scriptsnitch-out/, retention-days: 30, if-no-files-found: ignore }
+
+  report:
+    needs: collect
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions: { contents: write, issues: write, pull-requests: write, actions: read }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        continue-on-error: true
+        with: { name: scriptsnitch, path: scriptsnitch-out/ }
+      - uses: vancoder1/scriptsnitch@v1
+        with: { mode: report }

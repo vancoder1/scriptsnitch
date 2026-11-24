@@ -1,0 +1,134 @@
+name: Self-test
+
+# Runs the action itself (uses: ./) against the demo site, started in the job on *.localhost names,
+# which Chrome resolves without any flag: collect and a dry-run report, then three stateless checks
+# (nothing approved, everything approved, a skimmer appears) and validate.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+  actions: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  action:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      CONFIG: .github/self-test/config.json
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - name: Start the demo site
+        run: |
+          nohup node test/fixtures/site/serve.js --port 8123 > "$RUNNER_TEMP/demo.log" 2>&1 &
+          for _ in $(seq 1 50); do
+            curl -sf -o /dev/null -H 'Host: shop.localhost:8123' http://127.0.0.1:8123/ && exit 0
+            sleep 0.2
+          done
+          cat "$RUNNER_TEMP/demo.log"
+          exit 1
+
+      - name: Collect, with a fire drill
+        id: collect
+        uses: ./
+        with:
+          mode: collect
+          config: ${{ env.CONFIG }}
+          drill: true
+
+      - name: Report (dry run)
+        id: report
+        uses: ./
+        with:
+          mode: report
+          config: ${{ env.CONFIG }}
+          dry-run: true
+
+      - name: The first run finds everything unapproved and the drill passes
+        env:
+          SNAPSHOT: ${{ steps.collect.outputs.snapshot }}
+          HIGH: ${{ steps.report.outputs.high }}
+        run: |
+          test -s "$SNAPSHOT"
+          test "$HIGH" -gt 0
+          node -e "const r = require('./scriptsnitch-out/report.json'); if (r.drill?.result !== 'pass') { console.error('drill:', JSON.stringify(r.drill)); process.exit(1); }"
+
+      - name: Check, with nothing approved
+        id: check1
+        uses: ./
+        with:
+          mode: check
+          config: ${{ env.CONFIG }}
+          out: check1
+          github-token: ''
+
+      - name: Approve everything it found
+        run: |
+          node bin/scriptsnitch.js approve --all --config "$CONFIG" --out check1
+          node -e "const a = require('./.github/self-test/approved.json'); for (const s of Object.values(a.sites)) for (const p of s.pending) console.log(p.finding)" |
+            while IFS= read -r key; do node bin/scriptsnitch.js approve --id "$key" --reason "Self-test" --config "$CONFIG"; done
+
+      - name: Check, with everything approved
+        id: check2
+        uses: ./
+        with:
+          mode: check
+          config: ${{ env.CONFIG }}
+          out: check2
+          github-token: ''
+          fail-on: medium
+
+      - name: An unapproved script appears
+        run: curl -sf "http://127.0.0.1:8124/scenario?name=intermittent"
+
+      - name: Check, with the skimmer
+        id: check3
+        continue-on-error: true
+        uses: ./
+        with:
+          mode: check
+          config: ${{ env.CONFIG }}
+          out: check3
+          github-token: ''
+          fail-on: high
+
+      - name: Validate, while the reasons still say TODO
+        id: validate
+        continue-on-error: true
+        uses: ./
+        with:
+          mode: validate
+          config: ${{ env.CONFIG }}
+
+      - name: Assert the results
+        env:
+          HIGH1: ${{ steps.check1.outputs.high }}
+          HIGH2: ${{ steps.check2.outputs.high }}
+          MEDIUM2: ${{ steps.check2.outputs.medium }}
+          HIGH3: ${{ steps.check3.outputs.high }}
+          CHECK3: ${{ steps.check3.outcome }}
+          VALIDATE: ${{ steps.validate.outcome }}
+        run: |
+          test "$HIGH1" -gt 0
+          test "$HIGH2" = 0
+          test "$MEDIUM2" = 0
+          test "$HIGH3" -gt 0
+          test "$CHECK3" = failure
+          test "$VALIDATE" = failure

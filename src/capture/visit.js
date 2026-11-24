@@ -9,7 +9,11 @@ import { runSteps, navigate, querySelector } from './steps.js';
 import { readDom } from './dom.js';
 import { holdNetwork, fillAndSubmit, waitAndSample, startCoverage, takeCoverage, readStorage } from './probe.js';
 import { countPeers } from './peers.js';
+import { acceptConsent } from './consent.js';
+import { installDrill } from './drill.js';
 import { findValues } from '../analyze/probe-match.js';
+
+const NO_CONSENT = { found: null, accepted: false };
 
 export const newCache = () => ({ sources: new Map(), bodies: new Map(), analysis: new Map() });
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -46,23 +50,26 @@ async function expectPresent(ctx, sessionId, expect) {
 
 // Steps first (their pages are not judged), then a full load of the page itself, settling, one
 // scroll to the bottom, and settling again.
-async function load(ctx, session, page, profile, logs, env) {
+async function load(ctx, session, page, profile, logs, env, { beforeNavigate } = {}) {
   if (page.steps?.length) {
     try {
       await runSteps(ctx, session.id, page.steps, { env });
     } catch (err) {
-      return err.message;
+      return { reason: err.message, consent: NO_CONSENT };
     }
   }
   logs.scripts.reset();
   logs.net.reset();
+  if (beforeNavigate) await beforeNavigate();
   const nav = await navigate(ctx, session.id, page.url, page.settle?.capMs ?? 15000);
-  if (!nav.ok) return nav.reason;
+  if (!nav.ok) return { reason: nav.reason, consent: NO_CONSENT };
   const first = await settle(logs.net, logs.scripts, page.settle);
+  const consent = await acceptConsent(ctx, session.id, page.consent ?? 'accept', { touch: profile.hasTouch, env });
+  if (consent.accepted) await settle(logs.net, logs.scripts, page.settle);
   await scrollToBottom(ctx, session.id, profile.viewport);
   await settle(logs.net, logs.scripts, { ...page.settle, capMs: 5000 });
-  if (page.expect && !(await expectPresent(ctx, session.id, page.expect))) return 'expected content missing';
-  return first.timedOut && logs.scripts.parsed.length === 0 ? 'timed out' : null;
+  if (page.expect && !(await expectPresent(ctx, session.id, page.expect))) return { reason: 'expected content missing', consent };
+  return { reason: first.timedOut && logs.scripts.parsed.length === 0 ? 'timed out' : null, consent };
 }
 
 // Turns what the context recorded into the visit's scripts, destinations and documents.
@@ -122,9 +129,10 @@ const mergeFields = (a, b) => {
 
 // The probe part of a probe visit: hold the network, fill and submit, wait, then observe before
 // leaving the page, read storage, and leave so unload beacons are held too.
-async function probeVisit(ctx, session, page, profile, logs, scope, values) {
+async function probeVisit(ctx, session, page, profile, logs, scope, values, drillHandle) {
   const { own, framesMode, extraSelectors } = scope;
   const before = await readDom(ctx, { own, framesMode, extraSelectors, refOf: () => null });
+  drillHandle?.stop();
   const held = await holdNetwork(ctx);
   logs.net.setPhase('probe');
   const framesAtStart = logs.net.frames.length;
@@ -166,7 +174,7 @@ async function probeVisit(ctx, session, page, profile, logs, scope, values) {
 }
 
 export async function visitPage(browser, page, profileName, options = {}) {
-  const { role = 'A', mode = 'plain', values = null, own = new Set([page.site]), frames: framesMode = 'own', cache = newCache(), env = process.env, random = Math.random, extraSelectors = {} } = options;
+  const { role = 'A', mode = 'plain', values = null, own = new Set([page.site]), frames: framesMode = 'own', cache = newCache(), env = process.env, random = Math.random, extraSelectors = {}, drill = false } = options;
   const profile = profileFor(profileName, { chromeVersion: browser.version, random });
   const ctx = await browser.newContext();
   ctx.onSession(async (s) => {
@@ -176,10 +184,12 @@ export async function visitPage(browser, page, profileName, options = {}) {
   const logs = { scripts: createScriptLog(ctx), net: createNetLog(ctx) };
   try {
     const session = await ctx.newPage();
-    const reason = await load(ctx, session, page, profile, logs, env);
+    let drillHandle = null;
+    const loaded = await load(ctx, session, page, profile, logs, env, { beforeNavigate: drill ? async () => { drillHandle = await installDrill(ctx, session.id); } : null });
+    const { reason } = loaded;
     const scope = { own, framesMode, extraSelectors, cache };
     let run = { obs: null, held: [], inputCode: [], peers: 0, fieldsBefore: [], probe: null };
-    if (!reason && mode === 'probe') run = await probeVisit(ctx, session, page, profile, logs, scope, values);
+    if (!reason && mode === 'probe') run = await probeVisit(ctx, session, page, profile, logs, scope, values, drillHandle);
     else if (!reason) run = { ...run, obs: await observe(ctx, session, page, logs, scope), peers: await countPeers(ctx, session.id) };
     const { obs } = run;
 
@@ -188,7 +198,7 @@ export async function visitPage(browser, page, profileName, options = {}) {
       conclusive: !reason,
       reason,
       document: { status: obs?.doc?.status ?? 0, finalUrl: obs?.finalUrl ?? page.url, headers: obs?.doc?.responseHeaders ?? {}, metaCsp: obs?.dom.metaCsp ?? [], title: obs?.dom.title ?? '' },
-      consent: { found: null, accepted: false },
+      consent: loaded.consent,
       scripts: obs ? obs.built.scripts : [],
       destinations: obs ? obs.destinations : [],
       frames: obs?.dom.frames ?? [],

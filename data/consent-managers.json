@@ -1,0 +1,14 @@
+[
+  { "name": "OneTrust", "detect": "#onetrust-banner-sdk", "accept": "#onetrust-accept-btn-handler" },
+  { "name": "Cookiebot", "detect": "#CybotCookiebotDialog", "accept": "#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll, #CybotCookiebotDialogBodyButtonAccept" },
+  { "name": "Didomi", "detect": "#didomi-host", "accept": "#didomi-notice-agree-button" },
+  { "name": "Usercentrics", "detect": "#usercentrics-root, #usercentrics-cmp-ui", "accept": "[data-testid=\"uc-accept-all-button\"], #accept" },
+  { "name": "Quantcast Choice", "detect": ".qc-cmp2-container", "accept": ".qc-cmp2-summary-buttons button[mode=\"primary\"]" },
+  { "name": "TrustArc", "detect": "#truste-consent-track", "accept": "#truste-consent-button" },
+  { "name": "Complianz", "detect": ".cmplz-cookiebanner", "accept": ".cmplz-accept" },
+  { "name": "CookieYes", "detect": ".cky-consent-container", "accept": ".cky-btn-accept" },
+  { "name": "Osano", "detect": ".osano-cm-dialog", "accept": ".osano-cm-accept-all" },
+  { "name": "Termly", "detect": "#termly-code-snippet-support", "accept": "[data-tid=\"banner-accept\"]" },
+  { "name": "iubenda", "detect": "#iubenda-cs-banner", "accept": ".iubenda-cs-accept-btn" },
+  { "name": "Klaro", "detect": ".klaro .cookie-notice, .klaro .cookie-modal", "accept": ".klaro .cm-btn-success" }
+]

@@ -106,3 +106,13 @@ test('probes a page with a password field once per profile when it is not sensit
   assert.deepEqual(snap.pages[0].profiles.desktop.visits.map((v) => v.role), ['A', 'B', 'probe']);
   assert.deepEqual(snap.pages[0].profiles.mobile.visits.map((v) => v.role), ['A', 'B', 'probe']);
 });
+
+test('runs a drill visit on sensitive pages when asked, and keeps drill code out of the evidence', async (t) => {
+  if (!executable) return t.skip('no Chrome');
+  await site.setScenario('baseline');
+  const snap = await run(config([{ name: 'Sign in', url: `${site.origin('shop.test')}/login`, sensitive: true }], { profiles: ['desktop'] }), { drill: true });
+  const roles = snap.pages[0].profiles.desktop.visits.map((v) => v.role);
+  assert.ok(roles.includes('drill'), roles.join(','));
+  assert.equal(snap.run.drill, true);
+  assert.equal(Object.values(snap.evidence).some((e) => e.url?.includes('drill.scriptsnitch.invalid')), false);
+});

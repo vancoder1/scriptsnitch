@@ -152,7 +152,14 @@ export async function collect({ config, approved, outDir, executable, allowNoSan
     }
 
 
-    for (const v of visits.filter((x) => x.conclusive)) {
+    // A fire drill: one desktop visit per sensitive page with a harmless test skimmer added in the browser.
+    if (drill && page.sensitive && profile === 'desktop') {
+      const d = judgeVisit(await safeVisit(page, profile, { ...options('drill'), mode: 'probe', drill: true, values: probeValues(random, { now: now() }) }));
+      maskVisit(d, volatile);
+      visits.push(d);
+    }
+
+    for (const v of visits.filter((x) => x.conclusive && x.role !== 'drill')) {
       for (const s of v.scripts) {
         if (exactlyApproved(s.ref, section)) continue;
         const key = s.ref.contentHash ?? s.ref.template;

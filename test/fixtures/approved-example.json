@@ -1,0 +1,67 @@
+{
+  "version": 1,
+  "sites": {
+    "https://shop.example": {
+      "own": ["https://static.shop.example", "https://auth.shop.example"],
+      "scripts": [
+        {
+          "id": "jsdelivr-jquery",
+          "match": "https://cdn.jsdelivr.net/npm/jquery@3.7.1/dist/jquery.min.js",
+          "trust": "exact",
+          "sha256": ["5d0f2b3c4e7a91d8f6b2c1e0a9d8c7b6a5f4e3d2c1b0a9f8e7d6c5b4a3f2e1d0"],
+          "pages": ["**"],
+          "behavior": { "hosts": [], "listens": [], "input": false, "eval": false, "obfuscation": "minified" },
+          "reason": "jQuery for the product gallery",
+          "approved": "2026-11-23"
+        },
+        {
+          "id": "self-build",
+          "match": "https://shop.example/assets/*.{token}.js",
+          "trust": "deploy",
+          "pages": ["**", "/login", "/checkout"],
+          "behavior": { "hosts": ["api.shop.example"], "listens": ["password:field:input"], "input": true, "eval": false, "obfuscation": "minified" },
+          "reason": "Our app's build output",
+          "approved": "2026-11-23"
+        },
+        {
+          "id": "gtm-main",
+          "match": "https://www.googletagmanager.com/gtm.js?id=GTM-ABC123",
+          "trust": "origin",
+          "pages": ["**"],
+          "behavior": { "hosts": [], "listens": ["*:document:click"], "input": false, "eval": true, "obfuscation": "minified" },
+          "reason": "Marketing tags",
+          "approved": "2026-11-23"
+        },
+        {
+          "id": "inline-login-1",
+          "match": "inline",
+          "trust": "exact",
+          "template": ["a91c0e7d6b5a4f3e2d1c0b9a8f7e6d5c4b3a2f1e0d9c8b7a6f5e4d3c2b1a0f9e"],
+          "pages": ["/login"],
+          "behavior": { "hosts": [], "listens": [], "input": false, "eval": false, "obfuscation": "plain" },
+          "reason": "Sets up the sign-in form",
+          "approved": "2026-11-23"
+        }
+      ],
+      "destinations": [
+        { "match": "https://*.stripe.com", "pages": ["/checkout"], "reason": "Payments", "approved": "2026-11-23" },
+        { "match": "POST https://shop.example/api/login", "receives": ["email", "password"], "pages": ["/login"], "reason": "Our sign-in endpoint", "approved": "2026-11-23" }
+      ],
+      "frames": [{ "match": "https://js.stripe.com", "fields": ["card"], "pages": ["/checkout"], "reason": "Stripe Elements", "approved": "2026-11-23" }],
+      "fields": [{ "frame": "top", "form": "POST /login", "field": "password", "kind": "password", "count": 1, "pages": ["/login"], "reason": "Sign-in form", "approved": "2026-11-23" }],
+      "allow": [{ "what": "peer-connection", "pages": ["/support"], "reason": "Video help widget", "approved": "2026-11-23" }],
+      "headers": {
+        "**": { "strict-transport-security": "max-age=31536000" },
+        "/checkout": { "content-security-policy": { "script-src": ["'self'", "https://js.stripe.com"] } }
+      },
+      "pending": [
+        {
+          "finding": "new-origin|https://cdn.evil.example/x.js|*",
+          "severity": "high",
+          "into": "scripts",
+          "entry": { "id": "evil-x", "match": "https://cdn.evil.example/x.js", "trust": "exact", "sha256": ["9b2e0f1a2b3c4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f708192a3b4c5d6"], "pages": ["/checkout"], "reason": "TODO: why does this page need it?", "approved": "2026-11-23" }
+        }
+      ]
+    }
+  }
+}

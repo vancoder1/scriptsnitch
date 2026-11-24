@@ -18,6 +18,21 @@ const hostOf = (url) => { try { return new URL(url).host; } catch { return url; 
 const keyOf = (p) => p.finding ?? `${p.section}|${p.id ?? entryKey(p.section, p.entry ?? {})}|${p.remove ? 'remove' : 'change'}`;
 const keysOf = (p) => [keyOf(p), ...(p.also ?? [])];
 export const branchFor = (site) => `scriptsnitch/approve-${hostOf(site).replace(/:/g, '-')}`;
+export const prTitle = (site) => `scriptsnitch: approve changes on ${hostOf(site)}`;
+
+// A new approval branch started from base. An old bot-only branch is started again; one with a
+// person's commits is left alone (its pull request holds them) and a new name is used.
+export async function startBranch(github, { site, base, botLogin }) {
+  const root = branchFor(site);
+  let branch = root;
+  for (let n = 2; await github.getRef(`heads/${branch}`); n++) {
+    const cmp = await github.compare(base, branch);
+    if (cmp.commits.every((c) => c.author === botLogin)) { await github.deleteRef(`heads/${branch}`); break; }
+    branch = `${root}-${n}`;
+  }
+  await github.createRef(`heads/${branch}`, await github.getRef(`heads/${base}`));
+  return branch;
+}
 const parseFile = (file, path) => (file ? parseApproved(file.text, path) : emptyApproved());
 
 // Same site, roughly: the last two labels agree (three for names like shop.co.uk).
@@ -84,7 +99,7 @@ export async function syncApprovalPr(github, { site, proposals, approvedPath, ba
   if (propose === 'issue') return { prNumber: null, fallback: live.length ? 'issue' : null, edits };
   const host = hostOf(site);
   const liveKeys = new Set(live.flatMap(keysOf));
-  const title = `scriptsnitch: approve changes on ${host}`;
+  const title = prTitle(site);
 
   const open = (await github.listPulls({ state: 'open' })).find((p) => readMarker(p.body, 'pr')?.site === site) ?? null;
   if (open) {
@@ -119,16 +134,7 @@ export async function syncApprovalPr(github, { site, proposals, approvedPath, ba
   }
   if (!live.length) return { prNumber: null, fallback: null, edits };
 
-  // A new pull request, on a branch started from base. An old bot-only branch is started again; one
-  // with a person's commits is left alone (its pull request holds them) and a new name is used.
-  const root = branchFor(site);
-  let branch = root;
-  for (let n = 2; await github.getRef(`heads/${branch}`); n++) {
-    const cmp = await github.compare(base, branch);
-    if (cmp.commits.every((c) => c.author === botLogin)) { await github.deleteRef(`heads/${branch}`); break; }
-    branch = `${root}-${n}`;
-  }
-  await github.createRef(`heads/${branch}`, await github.getRef(`heads/${base}`));
+  const branch = await startBranch(github, { site, base, botLogin });
   const approved = await writeFile(github, { path: approvedPath, branch, site, proposals: live, message: `scriptsnitch: propose ${live.length} change${live.length === 1 ? '' : 's'} on ${host}` });
   const body = writeMarker(renderBody({ site, path: approvedPath, proposals: live, liveKeys, known: liveKeys, approved }), 'pr', { v: 1, site, keys: [...liveKeys], deferred: [] });
   try {

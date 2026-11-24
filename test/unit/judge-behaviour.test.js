@@ -314,3 +314,17 @@ test('findings say how to recognise them later, and observedIndex lists everythi
   for (const f of r.findings) assert.ok(f.observedAs.every((x) => index.has(x)), f.kind);
   assert.ok(index.has('headers:/checkout|strict-transport-security'));
 });
+
+test('a probe value leaked in a link host name is probe-exfil, keyed without the value; a link host first seen in the probe is High', () => {
+  const appr = approved({ scripts: [appEntry({ input: true })] });
+  const p = { values: { card: '4111111111111111', password: 'Xy7-Pq9!Lm' }, submitted: true, hits: [], growth: [], storage: [] };
+  const r = run(withProbe('/login', [ext(APP)], { linkHosts: ['4111111111111111.exfil.evil.example', 'xy7pq9lm.x.evil.example'], probe: p }, { sensitive: true }), appr);
+  const keys = r.findings.map((f) => f.key).sort();
+  assert.deepEqual(keys, [
+    findingKey('new-destination', 'https://exfil.evil.example', '*'),
+    findingKey('new-destination', 'https://x.evil.example', '*'),
+    findingKey('probe-exfil', 'https://exfil.evil.example card', '*'),
+    findingKey('probe-exfil', 'https://x.evil.example password', '*'),
+  ].sort());
+  assert.ok(r.findings.every((f) => f.severity === 'high'));
+});

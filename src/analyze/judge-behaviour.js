@@ -13,6 +13,7 @@ import { scriptIdentity } from './keys.js';
 import { judgedVisits } from './judge-scripts.js';
 import { coversPage, matchListener, matchUrl } from '../config/patterns.js';
 import { short } from '../util/hash.js';
+import { findValues } from './probe-match.js';
 
 const SENSITIVE = new Set(['password', 'card', 'iban']);
 const FIELD_ROLES = new Set(['field', 'form', 'submit']);
@@ -68,7 +69,17 @@ function labelOf(ref, entries) {
   return ref?.contentHash ? `code ${short(ref.contentHash)}` : 'unknown script';
 }
 
-function judgeDestinations(ctx, page, profile, v, id) {
+// DNS names are case-insensitive and hold only letters, digits and hyphens, so probe values are
+// looked for in that form; the labels that carry one are left out of the subject, which would
+// otherwise change with every run's random values.
+const dnsForm = (values) => Object.fromEntries(Object.entries(values ?? {}).map(([k, val]) => [k, String(val).toLowerCase().replace(/[^a-z0-9]/g, '')]));
+function linkHost(host, values) {
+  const labels = host.toLowerCase().split('.');
+  const leaks = labels.flatMap((l) => findValues(l, values));
+  return { leaks, host: labels.filter((l) => !findValues(l, values).length).join('.') };
+}
+
+function judgeDestinations(ctx, page, profile, v, id, loadHosts) {
   const base = { site: ctx.site, profile, path: page.path, visits: [id] };
   for (const d of v.destinations) {
     const covering = coveringDestinations(d.url, d.method, ctx.section, page.path, page.sensitive);
@@ -87,12 +98,19 @@ function judgeDestinations(ctx, page, profile, v, id) {
     });
   }
   const forPage = ctx.section.destinations.filter((d) => coversPage(d.pages, page.path, page.sensitive) && patternHost(d.match));
-  for (const host of v.linkHosts) {
-    const covering = forPage.filter((d) => hostMatches(patternHost(d.match), host.toLowerCase()));
+  const values = v.probe ? dnsForm(v.probe.values) : {};
+  for (const raw of v.linkHosts) {
+    const { leaks, host } = linkHost(raw, values);
+    const subject = `https://${host}`;
+    // A host that only a probe visit shows appeared once the network was held.
+    const duringProbe = Boolean(v.probe) && !loadHosts.has(raw.toLowerCase());
+    for (const leak of leaks) {
+      ctx.add({ ...base, kind: 'probe-exfil', subject: `${subject} ${leak.kind}`, severity: 'high', reasons: [`a ${leak.kind} value from the probe was put into a host name under ${host} (a dns-prefetch or preconnect hint), which leaks it without any request`], evidence: [raw], data: { url: subject, kind: leak.kind, destination: subject, approvable: false, page: page.path } });
+    }
+    const covering = forPage.filter((d) => hostMatches(patternHost(d.match), host));
     for (const e of covering) ctx.markSeen('destinations', e);
     if (covering.length) continue;
-    const subject = `https://${host.toLowerCase()}`;
-    ctx.add({ ...base, kind: 'new-destination', subject, severity: 'medium', reasons: [`a <link> prefetch or preconnect to ${host}, which no destination entry approves`], evidence: [host], data: { url: subject, method: 'GET', type: 'Link', destination: subject, page: page.path, sensitive: page.sensitive } });
+    ctx.add({ ...base, kind: 'new-destination', subject, severity: duringProbe ? 'high' : 'medium', reasons: [duringProbe ? `a <link> prefetch or preconnect to ${host}, added while the probe held the network` : `a <link> prefetch or preconnect to ${host}, which no destination entry approves`], evidence: [raw], data: { url: subject, method: 'GET', type: 'Link', destination: subject, page: page.path, sensitive: page.sensitive } });
   }
 }
 
@@ -244,8 +262,9 @@ export function judgeBehaviour(ctx, pages) {
   ctx.approvals = new Map();
   ctx.observed = new Map();
   for (const { page, profile, visits } of judgedVisits(ctx, pages)) {
+    const loadHosts = new Set(visits.filter(({ v }) => !v.probe).flatMap(({ v }) => v.linkHosts.map((h) => h.toLowerCase())));
     for (const { v, id } of visits) {
-      judgeDestinations(ctx, page, profile, v, id);
+      judgeDestinations(ctx, page, profile, v, id, loadHosts);
       judgeProbe(ctx, page, profile, v, id);
       judgeListeners(ctx, page, profile, v, id);
       judgeInputCode(ctx, page, profile, v, id);

@@ -1,0 +1,16 @@
+name: scriptsnitch
+description: Watch the scripts your web pages run and where they send data, against an approved list. Unapproved changes become GitHub issues.
+author: Ivan Zaporozhets
+
+branding:
+  icon: eye
+  color: red
+
+inputs:
+  mode:
+    description: "What to run: collect, report, validate, command, evidence or check."
+    required: true
+
+runs:
+  using: node24
+  main: src/main.js

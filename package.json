@@ -1,0 +1,38 @@
+{
+  "name": "scriptsnitch",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Watches the scripts your web pages run and where they send data, against an approved list in your repository. Unapproved changes become GitHub issues.",
+  "keywords": [
+    "github-action",
+    "security",
+    "magecart",
+    "skimming",
+    "supply-chain",
+    "pci-dss",
+    "csp",
+    "javascript"
+  ],
+  "license": "MIT",
+  "author": "Ivan Zaporozhets",
+  "homepage": "https://github.com/vancoder1/scriptsnitch#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vancoder1/scriptsnitch.git"
+  },
+  "bugs": {
+    "url": "https://github.com/vancoder1/scriptsnitch/issues"
+  },
+  "type": "module",
+  "bin": {
+    "scriptsnitch": "bin/scriptsnitch.js"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "test": "node --test --test-concurrency=1 \"test/**/*.test.js\"",
+    "test:unit": "node --test \"test/unit/**/*.test.js\" \"test/run/**/*.test.js\"",
+    "test:chrome": "node --test --test-concurrency=1 \"test/chrome/**/*.test.js\""
+  }
+}

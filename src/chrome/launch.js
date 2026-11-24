@@ -74,7 +74,8 @@ export async function launchChrome({ executable, allowNoSandbox = false, extraAr
       await Promise.race([conn.send('Browser.close').catch(() => {}), new Promise((r) => setTimeout(r, 3000))]);
       await Promise.race([exited, new Promise((r) => setTimeout(r, 5000))]);
       killTree(child);
-      await Promise.race([exited, new Promise((r) => setTimeout(r, 2000))]);
+      // The exit event can lag behind a killed tree on a busy machine; close means closed.
+      await Promise.race([exited, new Promise((r) => setTimeout(r, 10000))]);
       conn.close();
       removeDir(userDataDir);
     })();

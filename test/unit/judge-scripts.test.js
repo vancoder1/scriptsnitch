@@ -159,3 +159,10 @@ test('cloaking is not raised for a file approved with origin trust', () => {
   snap.crossCheck = [{ url, chromeHash: H('a'), directHash: H('b'), note: null }];
   assert.deepEqual(kinds(run(snap, approved({ scripts: [entry({ id: 'w', match: url, trust: 'origin' })] }))), []);
 });
+
+test('with no entry-slot history (a first or stateless run), the page\'s own bundle in an approved build folder is accepted', () => {
+  const appr = approved({ scripts: [entry({ id: 'build', match: `${SITE}/assets/*-{token}.js`, trust: 'deploy' })] });
+  const bundle = `${SITE}/assets/index-B7kQ0aRz.js`;
+  assert.deepEqual(kinds(run(one('/', { scripts: [ext(bundle)] }), appr)), []);
+  assert.deepEqual(kinds(run(one('/', { scripts: [ext(bundle), ext(`${SITE}/assets/evil-Zz9Yy8Xx.js`, { creator: bundle })] }), appr)), ['build-file:medium'], 'a file the page did not load directly still needs the chunk map or a deploy');
+});

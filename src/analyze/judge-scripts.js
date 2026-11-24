@@ -56,7 +56,8 @@ function judgeOwnFile(ctx, page, base, url, cls, obs, covering) {
   if (cls.kind === 'hashed' && /\{token\}|\*/.test(deployEntry.match)) {
     const slot = slotOf(url, cls);
     const entrySlot = slot in ctx.entry.current;
-    const known = entrySlot && ctx.entry.previous && slot in ctx.entry.previous;
+    // Loaded directly by the page and nothing to compare with yet (a first or stateless run).
+    const known = entrySlot && (!ctx.entry.previous || slot in ctx.entry.previous);
     if (known || buildFileAccepted({ token: cls.token, referenced: obs.referenced, evident: ctx.evident, deployTokens: st.deployTokens })) {
       st.ownHashes[url] = short(hash);
       if (ctx.evident && !obs.referenced && !st.deployTokens.includes(cls.token)) st.deployTokens.push(cls.token);

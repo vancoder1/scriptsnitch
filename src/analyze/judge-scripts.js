@@ -12,15 +12,15 @@ const patternOrigin = (pattern) => originOf(pattern.replace(/\{token\}|\{version
 const inlineRef = (template) => ({ url: null, contentHash: null, template });
 
 function judgeInline(ctx, page, profile, template, visits) {
-  const { section, st, run } = ctx;
+  const { section, st } = ctx;
   const base = { site: ctx.site, profile, path: page.path, visits, attributedTo: inlineRef(template) };
   const entries = section.scripts.filter((e) => e.match === 'inline' && coversPage(e.pages, page.path, page.sensitive));
-  const exact = entries.find((e) => e.trust === 'exact' && e.template?.includes(template));
-  if (exact) { st.seen[exact.id] = run; return; }
+  const listing = entries.find((e) => e.template?.includes(template));
+  if (listing) { ctx.markSeen('scripts', listing); return; }
   const deployEntry = entries.find((e) => e.trust === 'deploy');
   const accepted = (st.inline[page.path] ?? []).includes(short(template));
   if (deployEntry && (accepted || ctx.evident)) {
-    st.seen[deployEntry.id] = run;
+    ctx.markSeen('scripts', deployEntry);
     if (!accepted) {
       st.inline[page.path] = [...(st.inline[page.path] ?? []), short(template)];
       ctx.add({ ...base, kind: 'accepted', subject: `inline ${short(template)}`, page: page.path, severity: 'info', reasons: ['a new inline script came with a deploy'] });
@@ -31,17 +31,21 @@ function judgeInline(ctx, page, profile, template, visits) {
   ctx.add({ ...base, kind: 'new-inline', subject: template, page: page.path, severity, reasons: [page.sensitive && !ctx.evident ? 'a new inline script on a sensitive page, with no deploy' : 'a new inline script'], evidence: [template], data: { template, page: page.path, sensitive: page.sensitive } });
 }
 
-function judgeOwnFile(ctx, page, base, url, cls, obs, deployEntry) {
+// A reported change is not adopted into the state: it is reported on every run until its hash is
+// approved on the entry (sha256), or, for an unversioned file, until a deploy is evident.
+function judgeOwnFile(ctx, page, base, url, cls, obs, covering) {
   const { st } = ctx;
   const hash = obs.ref.contentHash;
   const prev = st.ownHashes[url];
+  const deployEntry = covering.find((e) => e.trust === 'deploy');
+  if (covering.some((e) => e.sha256?.includes(hash))) { st.ownHashes[url] = short(hash); return; }
   const immutable = cls.kind === 'hashed' || cls.kind === 'versioned';
-  const data = { url, hash, page: page.path, sensitive: page.sensitive, slot: slotOf(url, cls) };
+  const data = { url, hash, page: page.path, sensitive: page.sensitive, slot: slotOf(url, cls), entryId: deployEntry.id };
   if (prev && prev !== short(hash)) {
-    st.ownHashes[url] = short(hash);
     if (immutable) {
       ctx.add({ ...base, kind: 'in-place-change', subject: url, severity: 'high', reasons: [cls.kind === 'hashed' ? 'the content changed at a file name that carries a build token' : `the content of version ${cls.version} changed in place`], evidence: [hash], data });
     } else if (ctx.evident) {
+      st.ownHashes[url] = short(hash);
       ctx.add({ ...base, kind: 'accepted', subject: url, severity: 'info', reasons: ['changed with a deploy'] });
     } else {
       ctx.add({ ...base, kind: 'own-change', subject: url, page: page.sensitive ? page.path : '*', severity: page.sensitive ? 'medium' : 'info', reasons: ['your own file changed with no deploy evident'], evidence: [hash], data });
@@ -65,7 +69,7 @@ function judgeOwnFile(ctx, page, base, url, cls, obs, deployEntry) {
 }
 
 function judgeExternal(ctx, page, profile, url, observations, visits) {
-  const { section, own, st, run, snapshot } = ctx;
+  const { section, own, snapshot } = ctx;
   const obs = observations[0];
   const base = { site: ctx.site, profile, path: page.path, visits, attributedTo: obs.ref };
   const hashes = [...new Set(observations.map((o) => o.ref.contentHash))];
@@ -75,14 +79,15 @@ function judgeExternal(ctx, page, profile, url, observations, visits) {
   const slot = slotOf(url, cls);
   const data = { url, slot, hash: obs.ref.contentHash, hashes, sri: obs.sri, origin, page: page.path, sensitive: page.sensitive, own: isOwn, kind: cls.kind, creator: obs.creator?.url ?? null };
 
+  const covering = coveringScripts({ url, template: null }, section, page.path, page.sensitive);
+  // A file that legitimately differs by browser is approved with origin trust (design §10).
   const check = snapshot.crossCheck.find((c) => c.url === url);
-  if (check?.directHash && check.directHash !== check.chromeHash) {
+  if (check?.directHash && check.directHash !== check.chromeHash && !covering.some((e) => e.trust === 'origin')) {
     ctx.add({ ...base, kind: 'cloaking', subject: url, severity: 'high', reasons: ['Chrome received different bytes than a direct download of the same file'], evidence: [check.chromeHash], data });
   }
 
-  const covering = coveringScripts({ url, template: null }, section, page.path, page.sensitive);
   if (covering.length) {
-    for (const e of covering) st.seen[e.id] = run;
+    for (const e of covering) ctx.markSeen('scripts', e);
     const exact = covering.filter((e) => e.trust === 'exact');
     if (exact.length && hashes.every((h) => exact.some((e) => e.sha256?.includes(h)))) return;
     const deployEntry = covering.find((e) => e.trust === 'deploy');
@@ -92,7 +97,7 @@ function judgeExternal(ctx, page, profile, url, observations, visits) {
       ctx.add({ ...base, kind: 'content-mismatch', subject: url, severity: 'high', reasons: ['the content does not match any approved version of this file'], evidence: unapproved, data: { ...data, entryId: exact[0].id } });
       return;
     }
-    if (deployEntry && isOwn) judgeOwnFile(ctx, page, base, url, cls, obs, deployEntry);
+    if (deployEntry && isOwn) judgeOwnFile(ctx, page, base, url, cls, obs, covering);
     return;
   }
 
@@ -108,7 +113,7 @@ function judgeExternal(ctx, page, profile, url, observations, visits) {
     const creatorVendor = vendorOf(hostOf(obs.creator.url));
     const sameVendor = originOf(obs.creator.url) === origin || (creatorVendor && creatorVendor === vendorOf(hostOf(url)));
     if (loaders.length && sameVendor && !accountKey(url)) {
-      for (const e of loaders) st.seen[e.id] = run;
+      for (const e of loaders) ctx.markSeen('scripts', e);
       ctx.inherit(page.path, url, loaders);
       return;
     }

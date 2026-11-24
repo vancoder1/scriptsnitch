@@ -257,7 +257,16 @@ function withSite(approved, origin, fn) {
   return copy;
 }
 
-const findEntry = (s, section, id) => (s[section] ?? []).find((e) => (section === 'scripts' ? e.id : section === 'fields' ? fieldKey(e) : e.match) === id);
+// How an entry is named in proposals, pending items and the cross-run "seen" dates.
+export function entryKey(section, e) {
+  if (section === 'scripts') return e.id;
+  if (section === 'fields') return fieldKey(e);
+  if (section === 'allow') return `${e.what} ${(e.pages ?? ['**']).join(',')}`;
+  return e.match;
+}
+const findEntry = (s, section, id) => (s[section] ?? []).find((e) => entryKey(section, e) === id);
+// The key under which the status state records the date an entry was last seen.
+export const seenKeyOf = (section, e) => (section === 'scripts' ? e.id : `${section} ${entryKey(section, e)}`);
 
 export function addEntry(approved, origin, section, entry) {
   return withSite(approved, origin, (s) => { s[section].push(structuredClone(entry)); });
@@ -277,6 +286,15 @@ export function addToEntry(approved, origin, section, id, add) {
     if (!entry) throw new Error(`no ${section} entry ${id} for ${origin}`);
     mergeInto(entry, section === 'scripts' && !('behavior' in add) && ['hosts', 'listens', 'input', 'eval', 'obfuscation'].some((k) => k in add) ? { behavior: add } : add);
   });
+}
+
+// Sets header baseline values for a page pattern (values of null stop a header from being judged).
+export function setHeaders(approved, origin, pattern, values) {
+  return withSite(approved, origin, (s) => { s.headers[pattern] = { ...(s.headers[pattern] ?? {}), ...values }; });
+}
+
+export function replaceHeaders(approved, origin, headers) {
+  return withSite(approved, origin, (s) => { s.headers = structuredClone(headers); });
 }
 
 export function removeEntry(approved, origin, section, id) {
@@ -319,7 +337,7 @@ export function todoReasons(approved) {
     const s = normalizeSite(raw);
     for (const section of SECTIONS) {
       for (const e of s[section]) {
-        if (isTodo(e.reason)) out.push({ site: origin, section, id: section === 'scripts' ? e.id : section === 'fields' ? fieldKey(e) : section === 'allow' ? e.what : e.match });
+        if (isTodo(e.reason)) out.push({ site: origin, section, id: entryKey(section, e) });
       }
     }
   }

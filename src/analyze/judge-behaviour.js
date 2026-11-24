@@ -8,6 +8,7 @@ import { coveringScripts, coveringDestinations, originOf } from './approval.js';
 import { isIgnoredHost } from './hostnames.js';
 import { BAND_ORDER } from './obfuscation.js';
 import { baselineFor, compareHeaders } from './headers.js';
+import { cspBaseline, parseCsp } from './csp.js';
 import { scriptIdentity } from './keys.js';
 import { judgedVisits } from './judge-scripts.js';
 import { coversPage, matchListener, matchUrl } from '../config/patterns.js';
@@ -50,6 +51,14 @@ ${ref.url ?? ref.template}`;
   return entries;
 }
 
+// What each script was seen doing in this run, for its proposal: { hosts, listens, input, eval, obfuscation }.
+function observe(ctx, ref) {
+  const id = scriptIdentity(ref) ?? 'unknown';
+  let o = ctx.observed.get(id);
+  if (!o) { o = { hosts: new Set(), listens: new Set(), input: false, eval: false, obfuscation: ref?.template ? 'plain' : 'minified' }; ctx.observed.set(id, o); }
+  return o;
+}
+
 const isOwnRef = (ctx, ref) => Boolean(ref?.template) || (Boolean(ref?.url) && ctx.own.has(originOf(ref.url)));
 
 function labelOf(ref, entries) {
@@ -62,7 +71,9 @@ function labelOf(ref, entries) {
 function judgeDestinations(ctx, page, profile, v, id) {
   const base = { site: ctx.site, profile, path: page.path, visits: [id] };
   for (const d of v.destinations) {
-    if (coveringDestinations(d.url, d.method, ctx.section, page.path, page.sensitive).length) continue;
+    const covering = coveringDestinations(d.url, d.method, ctx.section, page.path, page.sensitive);
+    for (const e of covering) ctx.markSeen('destinations', e);
+    if (covering.length) continue;
     const changed = ctx.changed.has(scriptIdentity(d.initiator));
     const reasons = [];
     if (d.phase === 'probe') reasons.push('contacted while the probe held the network');
@@ -75,9 +86,11 @@ function judgeDestinations(ctx, page, profile, v, id) {
       evidence: [clip(`${d.method} ${d.url}`)], data: { url: d.url, method: d.method, type: d.type, destination: subject, page: page.path, sensitive: page.sensitive },
     });
   }
-  const approvedHosts = ctx.section.destinations.filter((d) => coversPage(d.pages, page.path, page.sensitive)).map((d) => patternHost(d.match)).filter(Boolean);
+  const forPage = ctx.section.destinations.filter((d) => coversPage(d.pages, page.path, page.sensitive) && patternHost(d.match));
   for (const host of v.linkHosts) {
-    if (approvedHosts.some((p) => hostMatches(p, host.toLowerCase()))) continue;
+    const covering = forPage.filter((d) => hostMatches(patternHost(d.match), host.toLowerCase()));
+    for (const e of covering) ctx.markSeen('destinations', e);
+    if (covering.length) continue;
     const subject = `https://${host.toLowerCase()}`;
     ctx.add({ ...base, kind: 'new-destination', subject, severity: 'medium', reasons: [`a <link> prefetch or preconnect to ${host}, which no destination entry approves`], evidence: [host], data: { url: subject, method: 'GET', type: 'Link', destination: subject, page: page.path, sensitive: page.sensitive } });
   }
@@ -100,10 +113,12 @@ function judgeProbe(ctx, page, profile, v, id) {
     if (entries.some((e) => e.receives?.includes(h.kind))) continue;
     ctx.add({ ...base, kind: 'probe-exfil', subject: `${subject} ${h.kind}`, severity: 'high', attributedTo: h.initiator, reasons: [`a ${h.kind} value from the probe reached ${subject} (${h.encoding}), which may not receive it`], evidence: [clip(h.url)], data: { url: h.url, kind: h.kind, destination: subject, entry: entries[0]?.match ?? null, approvable: true, page: page.path } });
   }
+  const typed = [...new Set(v.fields.map((f) => f.kind).filter((k) => SENSITIVE.has(k)))].sort();
   for (const g of v.probe.growth) {
-    if (covering(g.url).some((e) => e.receives?.length)) continue;
+    const entries = covering(g.url);
+    if (entries.some((e) => e.receives?.length)) continue;
     const subject = destinationSubject(g.url);
-    ctx.add({ ...base, kind: 'probe-exfil', subject: `${subject} growth`, severity: 'high', reasons: [`the ${g.field} of a request to ${subject} grew with the length of the values typed, as an encrypted copy would`], evidence: [clip(g.url)], data: { url: g.url, destination: subject, approvable: true, page: page.path } });
+    ctx.add({ ...base, kind: 'probe-exfil', subject: `${subject} growth`, severity: 'high', reasons: [`the ${g.field} of a request to ${subject} grew with the length of the values typed, as an encrypted copy would`], evidence: [clip(g.url)], data: { url: g.url, destination: subject, kinds: typed.length ? typed : ['card'], entry: entries[0]?.match ?? null, approvable: true, page: page.path } });
   }
   for (const s of v.probe.storage) {
     if (!STORAGE_KINDS.has(s.kind)) continue;
@@ -113,6 +128,7 @@ function judgeProbe(ctx, page, profile, v, id) {
 
 function judgeListeners(ctx, page, profile, v, id) {
   for (const l of v.listeners) {
+    observe(ctx, l.script).listens.add(`${l.kind}:${l.role}:${l.event}`);
     const entries = approvalsFor(ctx, l.script, page);
     if (entries.some((e) => e.behavior?.listens?.some((p) => matchListener(p, l)))) continue;
     const listener = `${l.kind}:${l.role}:${l.event}`;
@@ -124,6 +140,7 @@ function judgeListeners(ctx, page, profile, v, id) {
 
 function judgeInputCode(ctx, page, profile, v, id) {
   for (const ref of v.inputCode) {
+    observe(ctx, ref).input = true;
     const entries = approvalsFor(ctx, ref, page);
     if (entries.some((e) => e.behavior?.input)) continue;
     const label = labelOf(ref, entries);
@@ -137,6 +154,7 @@ function judgeFields(ctx, page, profile, v, id) {
     if (!SENSITIVE.has(f.kind)) continue;
     const approvals = ctx.section.fields.filter((a) => a.frame === f.frame && a.form === f.form && a.field === f.field && a.kind === f.kind && coversPage(a.pages, page.path, page.sensitive));
     const allowed = Math.max(0, ...approvals.map((a) => a.count ?? 1));
+    for (const a of approvals) ctx.markSeen('fields', a);
     if (approvals.length && f.count <= allowed) continue;
     const subject = `${f.frame} ${f.form} ${f.field} ${f.kind}`;
     ctx.add({ ...base, kind: 'new-field', subject, severity: 'high', reasons: [approvals.length ? `${f.count} ${f.kind} fields with this signature, where ${allowed} is approved` : `a ${f.kind} field that no entry approves`], data: { field: f, page: page.path } });
@@ -144,6 +162,7 @@ function judgeFields(ctx, page, profile, v, id) {
   for (const fr of v.frames) {
     if (ctx.own.has(fr.origin)) continue;
     const approvals = ctx.section.frames.filter((a) => matchUrl(a.match, fr.origin) && coversPage(a.pages, page.path, page.sensitive));
+    for (const a of approvals) ctx.markSeen('frames', a);
     const kinds = fr.fieldKinds.filter((k) => SENSITIVE.has(k));
     for (const k of kinds) {
       if (approvals.some((a) => a.fields?.includes(k))) continue;
@@ -160,6 +179,13 @@ function judgeCode(ctx, page, profile, v, id) {
   const known = ctx.knownHosts;
   for (const s of v.scripts) {
     const ref = s.kind === 'code' ? s.creator : s.ref;
+    if (!ref) continue;
+    const scriptHost = ref.url ? hostOf(ref.url) : hostOf(page.url);
+    const newHosts = s.hosts.map((h) => h.toLowerCase()).filter((host) => !(host === scriptHost || isIgnoredHost(host) || known.own.has(host) || known.patterns.some((p) => hostMatches(p, host))));
+    const seen = observe(ctx, ref);
+    for (const h of newHosts) seen.hosts.add(h);
+    if (s.kind === 'code') seen.eval = true;
+    else if (BAND_ORDER[s.band] > BAND_ORDER[seen.obfuscation]) seen.obfuscation = s.band;
     const entries = approvalsFor(ctx, ref, page);
     if (!entries.length) continue;
     const label = labelOf(ref, entries);
@@ -172,10 +198,7 @@ function judgeCode(ctx, page, profile, v, id) {
         ctx.add({ ...base, kind: 'obfuscation', subject: label, severity: 'medium', attributedTo: ref, reasons: [`${label} now looks ${s.band}, beyond its approved band`], data: { entryId: entries[0].id, band: s.band } });
       }
     }
-    const scriptHost = ref.url ? hostOf(ref.url) : hostOf(page.url);
-    for (const raw of s.hosts) {
-      const host = raw.toLowerCase();
-      if (host === scriptHost || isIgnoredHost(host) || known.own.has(host) || known.patterns.some((p) => hostMatches(p, host))) continue;
+    for (const host of newHosts) {
       const severity = page.sensitive && !(isOwnRef(ctx, ref) && ctx.evident) ? 'medium' : 'info';
       ctx.add({ ...base, kind: 'hostname', subject: `${label} ${host}`, severity, attributedTo: ref, reasons: [`${label}'s code mentions ${host}, a host name not seen there before`], evidence: [host], data: { entryId: entries[0].id, host } });
     }
@@ -190,9 +213,11 @@ function judgeHeaders(ctx, page, profile, v, id) {
   if (!observed['content-security-policy'] && v.document.metaCsp?.length) observed['content-security-policy'] = v.document.metaCsp[0];
   const base = { site: ctx.site, profile, path: page.path, visits: [id], page: page.path };
   for (const name of names) {
+    if (baseline[name] === null) continue;
     const r = compareHeaders({ [name]: baseline[name] }, observed);
-    if (r.weaker.length) ctx.add({ ...base, kind: 'headers-weaker', subject: name, severity: 'high', reasons: r.weaker, data: { header: name, page: page.path } });
-    else if (r.newCspSources.length) ctx.add({ ...base, kind: 'csp-source', subject: name, severity: 'medium', reasons: r.newCspSources.map((s) => `new source ${s}`), data: { header: name, sources: r.newCspSources, page: page.path } });
+    const value = name.startsWith('content-security-policy') ? cspBaseline(parseCsp(observed[name])) : observed[name] ?? null;
+    if (r.weaker.length) ctx.add({ ...base, kind: 'headers-weaker', subject: name, severity: 'high', reasons: r.weaker, data: { header: name, value, page: page.path } });
+    else if (r.newCspSources.length) ctx.add({ ...base, kind: 'csp-source', subject: name, severity: 'medium', reasons: r.newCspSources.map((s) => `new source ${s}`), data: { header: name, value, sources: r.newCspSources, page: page.path } });
     if (r.stronger.length) ctx.add({ ...base, kind: 'headers-stronger', subject: name, severity: 'info', reasons: r.stronger });
     if (r.reportOnlyChanged) ctx.add({ ...base, kind: 'csp-report-only', subject: name, severity: 'info', reasons: ['the report-only policy changed'] });
     for (const changed of r.changed) ctx.add({ ...base, kind: 'note', subject: `header ${changed}`, severity: 'info', reasons: [`${changed} changed`] });
@@ -202,7 +227,9 @@ function judgeHeaders(ctx, page, profile, v, id) {
 function judgePeers(ctx, page, profile, visits) {
   const withPeers = visits.filter(({ v }) => v.peers > 0);
   if (!withPeers.length) return;
-  if (ctx.section.allow.some((a) => a.what === 'peer-connection' && coversPage(a.pages, page.path, page.sensitive))) return;
+  const allows = ctx.section.allow.filter((a) => a.what === 'peer-connection' && coversPage(a.pages, page.path, page.sensitive));
+  for (const a of allows) ctx.markSeen('allow', a);
+  if (allows.length) return;
   const count = Math.max(...withPeers.map(({ v }) => v.peers));
   ctx.add({ site: ctx.site, profile, path: page.path, visits: withPeers.map(({ id }) => id), kind: 'peer-connection', subject: 'RTCPeerConnection', page: page.path, severity: 'high', reasons: [`${count} live peer connection${count > 1 ? 's' : ''} (WebRTC), which can send data without any request scriptsnitch sees`], data: { page: page.path } });
 }
@@ -215,6 +242,7 @@ export function judgeBehaviour(ctx, pages) {
   ];
   ctx.knownHosts = { own: ownHosts, patterns };
   ctx.approvals = new Map();
+  ctx.observed = new Map();
   for (const { page, profile, visits } of judgedVisits(ctx, pages)) {
     for (const { v, id } of visits) {
       judgeDestinations(ctx, page, profile, v, id);

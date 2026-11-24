@@ -1,6 +1,6 @@
 // The report job's judgment (design §10): turns a snapshot's observations into findings, using the
 // approved file and the cross-run state. Pure: returns the findings and the updated state.
-import { siteSection } from '../config/approved.js';
+import { siteSection, seenKeyOf } from '../config/approved.js';
 import { coversPage } from '../config/patterns.js';
 import { ownOrigins } from './hosts.js';
 import { siteState } from '../state.js';
@@ -9,10 +9,13 @@ import { judgeScripts } from './judge-scripts.js';
 import { judgeBehaviour } from './judge-behaviour.js';
 import { createCollector, scriptIdentity } from './keys.js';
 import { DRILL_ORIGIN } from '../capture/drill.js';
+import { TRACKED_HEADERS } from './headers.js';
+import { isoDate } from '../util/time.js';
 
 const CONTENT_KINDS = new Set(['new-origin', 'new-slot', 'new-version', 'content-mismatch', 'in-place-change', 'own-change', 'new-own-script', 'build-file', 'new-inline', 'cloaking', 'accepted']);
 const BEHAVIOUR_SIGNS = new Set(['new-destination', 'listener', 'input-code', 'probe-exfil']);
 const DRILL_EXPECTED = ['new-origin', 'listener', 'probe-exfil'];
+const NEW_SCRIPT_KINDS = new Set(['new-origin', 'new-slot', 'new-own-script', 'new-inline', 'new-version']);
 const WINDOW = 7;
 
 // §10 "Combination": a script with two or more findings, one of them a behaviour sign, has all of
@@ -66,8 +69,11 @@ function siteContext({ site, approved, status, snapshot, now, pages, includeVisi
   const evident = deployEvident({ previousEntrySlots: st.entrySlots, currentEntrySlots: current, previousMarker: st.marker, currentMarker });
   const inherited = new Map();
   const changed = new Set();
+  const seenNow = new Set();
+  const today = isoDate(now);
   return {
-    site, section, own, st, run: status.run, snapshot, now, evident, pages, includeVisit, changed,
+    site, section, own, st, run: status.run, snapshot, now, evident, pages, includeVisit, changed, seenNow,
+    markSeen: (sectionName, e) => { const k = seenKeyOf(sectionName, e); seenNow.add(k); st.seen[k] = today; },
     entry: { previous: st.entrySlots, current },
     marker: currentMarker,
     firstRun: !approved.sites[site],
@@ -91,10 +97,24 @@ function judgeSite(args) {
 function notSeen(ctx) {
   const judged = ctx.pages.filter((p) => Object.values(p.profiles).some((r) => r?.conclusive));
   for (const e of ctx.section.scripts) {
-    if (ctx.st.seen[e.id] === ctx.run) continue;
+    if (ctx.seenNow.has(e.id)) continue;
     if (!judged.some((p) => coversPage(e.pages, p.path, p.sensitive))) continue;
     ctx.add({ kind: 'not-seen', subject: e.id, severity: 'info', reasons: [`${e.id} was not seen on any page it covers in this run`] });
   }
+}
+
+// The tracked security headers each page served, from its first judged visit: the first run's
+// proposal and `approve --headers` adopt these.
+function observedHeaders(pages) {
+  const out = {};
+  for (const p of pages) {
+    const v = Object.values(p.profiles).filter((r) => r?.conclusive).flatMap((r) => r.visits).find((x) => x.conclusive && x.role !== 'drill');
+    if (!v) continue;
+    const headers = Object.fromEntries(Object.entries(v.document.headers).map(([k, val]) => [k.toLowerCase(), val]).filter(([k]) => TRACKED_HEADERS.includes(k)));
+    if (!headers['content-security-policy'] && v.document.metaCsp?.length) headers['content-security-policy'] = v.document.metaCsp[0];
+    out[p.path] = headers;
+  }
+  return out;
 }
 
 function drillResult(findings, pages) {
@@ -114,6 +134,8 @@ export function judge({ snapshot, approved, state, now = Date.now() }) {
   const sites = [...new Set(snapshot.pages.map((p) => p.site))];
   const firstRunSites = new Set();
   const inconclusive = [];
+  const observed = new Map();
+  const headers = {};
 
   for (const p of snapshot.pages) {
     for (const [profile, r] of Object.entries(p.profiles)) {
@@ -129,6 +151,8 @@ export function judge({ snapshot, approved, state, now = Date.now() }) {
     const pages = snapshot.pages.filter((p) => p.site === site);
     const ctx = judgeSite({ site, approved, status, snapshot, now, pages, includeVisit: (v) => v.role !== 'drill', collector, drill: false });
     if (ctx.firstRun) firstRunSites.add(site);
+    for (const [id, o] of ctx.observed) observed.set(`${site} ${id}`, o);
+    headers[site] = observedHeaders(pages);
     notSeen(ctx);
     for (const c of snapshot.crossCheck) {
       if (c.note && pages.some((p) => Object.values(p.profiles).some((r) => r?.visits.some((v) => v.scripts.some((s) => s.ref.url === c.url))))) {
@@ -145,7 +169,13 @@ export function judge({ snapshot, approved, state, now = Date.now() }) {
   }
 
   const all = combine(collector.all());
-  for (const f of all) f.firstRun = firstRunSites.has(f.site);
+  const sensitive = new Set(snapshot.pages.filter((p) => p.sensitive).map((p) => `${p.site}${p.path}`));
+  for (const f of all) {
+    f.firstRun = firstRunSites.has(f.site);
+    f.sensitivePages = f.seenOn.filter((p) => sensitive.has(`${f.site}${p}`));
+    const o = NEW_SCRIPT_KINDS.has(f.kind) ? observed.get(`${f.site} ${scriptIdentity(f.attributedTo)}`) : null;
+    if (o) f.data.behavior = { hosts: [...o.hosts].sort(), listens: [...o.listens].sort(), input: o.input, eval: o.eval, obfuscation: o.obfuscation };
+  }
   const { reportable, pendingSightings } = confirm(all, status, run);
   const drillFindings = combine(drillCollector.all()).filter((f) => f.severity !== 'info');
   return {
@@ -154,6 +184,7 @@ export function judge({ snapshot, approved, state, now = Date.now() }) {
     info: all.filter((f) => f.severity === 'info'),
     drill: drillResult(drillFindings, snapshot.pages),
     inconclusive,
+    headers,
     state: status,
   };
 }

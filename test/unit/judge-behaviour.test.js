@@ -255,3 +255,32 @@ test('first run proposes routine entries except the risky-in-themselves set', ()
   ];
   assert.deepEqual(firstRunSplit(proposals, own).map((p) => p.mode), ['routine', 'pending', 'routine', 'routine', 'pending', 'routine', 'pending', 'routine', 'pending', 'pending', 'routine', 'pending', 'routine']);
 });
+
+test('judge records the date each entry of every section was last seen', () => {
+  const appr = approved({
+    scripts: [appEntry()],
+    destinations: [{ match: 'https://api.example', reason: 'r', approved: '2026-11-01' }],
+    frames: [{ match: 'https://video.example', reason: 'r', approved: '2026-11-01' }],
+    fields: [{ frame: 'top', form: 'POST /login', field: 'password', kind: 'password', pages: ['/login'], reason: 'r', approved: '2026-11-01' }],
+    allow: [{ what: 'peer-connection', pages: ['/login'], reason: 'r', approved: '2026-11-01' }],
+  });
+  const r = run(one('/login', { scripts: [ext(APP)], destinations: [dest('https://api.example/x')], frames: [{ origin: 'https://video.example', tracked: false, fieldKinds: [] }], fields: [{ frame: 'top', form: 'POST /login', field: 'password', kind: 'password', count: 1 }], peers: 1 }, { sensitive: true }), approved({ ...appr.sites[SITE], destinations: appr.sites[SITE].destinations.map((d) => ({ ...d, pages: ['**', '/login'] })), frames: appr.sites[SITE].frames.map((f) => ({ ...f, pages: ['/login'] })) }));
+  assert.deepEqual(r.state.sites[SITE].seen, {
+    app: '2026-11-24',
+    'destinations https://api.example': '2026-11-24',
+    'frames https://video.example': '2026-11-24',
+    'fields top|POST /login|password|password': '2026-11-24',
+    'allow peer-connection /login': '2026-11-24',
+  });
+});
+
+test('new-script findings carry the behaviour seen, and header findings the value seen', () => {
+  const evil = 'https://evil.example/x.js';
+  const snap = withProbe('/checkout', [ext(evil, { hosts: ['c2.evil.example'], band: 'packed' }), code(evil)], { listeners: [lis('card', 'field', 'keydown', evil)], inputCode: [scriptRef(evil)] }, { sensitive: true });
+  const r = run(snap, approved({ headers: { '**': { 'x-frame-options': 'DENY' } } }));
+  const f = r.findings.find((x) => x.kind === 'new-origin');
+  assert.deepEqual(f.data.behavior, { hosts: ['c2.evil.example'], listens: ['card:field:keydown'], input: true, eval: true, obfuscation: 'packed' });
+  assert.deepEqual(f.sensitivePages, ['/checkout']);
+  const h = r.findings.find((x) => x.kind === 'headers-weaker');
+  assert.deepEqual([h.subject, h.data.value], ['x-frame-options', null]);
+});

@@ -131,3 +131,31 @@ test('the same finding on desktop and mobile is one finding with both profiles',
 test('inconclusive profiles produce no findings', () => {
   assert.deepEqual(kinds(run(snapshot([{ path: '/', conclusive: false, observed: { scripts: [ext('https://evil.example/x.js')] } }]), approved({}))), []);
 });
+
+test('an in-place change keeps being reported until its hash is approved on the deploy entry', () => {
+  const url = `${SITE}/assets/main.3f2a1c9b.js`;
+  const appr = (sha256) => approved({ scripts: [entry({ id: 'build', match: `${SITE}/assets/*.{token}.js`, trust: 'deploy', ...(sha256 ? { sha256 } : {}) })] });
+  const st = state();
+  st.sites[SITE] = { entrySlots: {}, marker: null, ownHashes: { [url]: H('old').slice(0, 12) }, inline: {}, deployTokens: [], seen: {}, domains: {}, domainCheck: null };
+  const snap = one('/', { scripts: [ext(url, { hash: H('new') })] });
+  const first = run(snap, appr(), st);
+  assert.deepEqual(kinds(first), ['in-place-change:high']);
+  assert.equal(first.findings[0].data.entryId, 'build');
+  assert.deepEqual(kinds(run(snap, appr(), first.state)), ['in-place-change:high'], 'still reported on the next run');
+  const ok = run(snap, appr([H('new')]), first.state);
+  assert.deepEqual(kinds(ok), []);
+  assert.deepEqual(kinds(run(snap, appr(), ok.state)), [], 'once accepted, the new hash is the baseline');
+});
+
+test('an inline template listed on a deploy entry is accepted without a deploy', () => {
+  const t = 'c'.repeat(64);
+  const appr = approved({ scripts: [entry({ id: 'in-home', match: 'inline', trust: 'deploy', template: [t] })] });
+  assert.deepEqual(kinds(run(one('/', { scripts: [inline(t)] }), appr)), []);
+});
+
+test('cloaking is not raised for a file approved with origin trust', () => {
+  const url = 'https://widgets.example/w.js';
+  const snap = one('/', { scripts: [ext(url, { hash: H('a') })] });
+  snap.crossCheck = [{ url, chromeHash: H('a'), directHash: H('b'), note: null }];
+  assert.deepEqual(kinds(run(snap, approved({ scripts: [entry({ id: 'w', match: url, trust: 'origin' })] }))), []);
+});

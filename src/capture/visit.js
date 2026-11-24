@@ -92,30 +92,40 @@ async function observe(ctx, session, page, logs, { own, framesMode, extraSelecto
   };
   const tracked = (frame) => frame === 'top' || own.has(frame) || framesMode === 'all';
   const built = await buildScripts(ctx, logs.scripts, logs.net, { frameOf: (p) => frameLabel(p.frameId, p.sessionId), docUrls, isTracked: (_p, frame) => tracked(frame), cache });
-  const initiatorRef = (initiator, sessionId) => {
+  const initiatorFrame = (initiator) => {
     for (let s = initiator?.stack; s; s = s.parent) {
       const f = s.callFrames?.find((c) => c.scriptId && c.scriptId !== '0');
-      if (f) return built.rootRefOf(sessionId, f.scriptId);
+      if (f) return f;
     }
     return null;
+  };
+  const initiatorRef = (initiator, sessionId) => {
+    const f = initiatorFrame(initiator);
+    return f ? built.rootRefOf(sessionId, f.scriptId) : null;
+  };
+  // True when the request came from code without a URL (eval, new Function, a blob script), which
+  // initiatorRef attributes to the script that created it.
+  const viaCode = (initiator, sessionId) => {
+    const f = initiatorFrame(initiator);
+    return f ? built.isCode(sessionId, f.scriptId) : false;
   };
   const destinations = [];
   for (const r of logs.net.destinationRequests()) {
     const frame = frameLabel(r.frameId, r.sessionId);
-    if (tracked(frame)) destinations.push({ url: r.url, method: r.method, type: r.type, frame, initiator: initiatorRef(r.initiator, r.sessionId), phase: r.phase });
+    if (tracked(frame)) destinations.push({ url: r.url, method: r.method, type: r.type, frame, initiator: initiatorRef(r.initiator, r.sessionId), viaCode: viaCode(r.initiator, r.sessionId), phase: r.phase });
   }
   for (const ws of logs.net.sockets.values()) {
-    destinations.push({ url: ws.url, method: 'GET', type: 'WebSocket', frame: frameLabel(null, ws.sessionId), initiator: initiatorRef(ws.initiator, ws.sessionId), phase: ws.phase });
+    destinations.push({ url: ws.url, method: 'GET', type: 'WebSocket', frame: frameLabel(null, ws.sessionId), initiator: initiatorRef(ws.initiator, ws.sessionId), viaCode: viaCode(ws.initiator, ws.sessionId), phase: ws.phase });
   }
   for (const wt of logs.net.transports) {
-    destinations.push({ url: wt.url, method: 'CONNECT', type: 'WebTransport', frame: frameLabel(null, wt.sessionId), initiator: initiatorRef(wt.initiator, wt.sessionId), phase: wt.phase });
+    destinations.push({ url: wt.url, method: 'CONNECT', type: 'WebTransport', frame: frameLabel(null, wt.sessionId), initiator: initiatorRef(wt.initiator, wt.sessionId), viaCode: viaCode(wt.initiator, wt.sessionId), phase: wt.phase });
   }
   let doc = null;
   for (const r of logs.net.requests.values()) {
     if (r.type === 'Document' && r.sessionId === session.id && r.phase === 'load' && (r.frameId === mainFrameId || !r.frameId)) doc = r;
   }
   const dom = await readDom(ctx, { own, framesMode, extraSelectors, refOf: built.rootRefOf });
-  return { built, destinations, doc, dom, finalUrl: frames.get(mainFrameId)?.url ?? page.url, frameLabel, initiatorRef };
+  return { built, destinations, doc, dom, finalUrl: frames.get(mainFrameId)?.url ?? page.url, frameLabel, initiatorRef, viaCode };
 }
 
 const mergeFields = (a, b) => {
@@ -160,10 +170,11 @@ async function probeVisit(ctx, session, page, profile, logs, scope, values, dril
   const requestById = new Map([...logs.net.requests.values()].map((r) => [r.requestId, r]));
   const hits = [];
   for (const h of held) {
-    const initiator = h.networkId ? obs.initiatorRef(requestById.get(h.networkId)?.initiator, h.sessionId) : null;
+    const rawInitiator = h.networkId ? requestById.get(h.networkId)?.initiator : null;
+    const initiator = rawInitiator ? obs.initiatorRef(rawInitiator, h.sessionId) : null;
     const frame = obs.frameLabel(null, h.sessionId);
     for (const hit of findValues(`${h.url}\n${h.body}\n${Object.values(h.headers).join('\n')}`, values)) hits.push({ ...hit, url: h.url, frame, initiator });
-    if (!obs.destinations.some((d) => d.url === h.url && d.phase === 'probe')) obs.destinations.push({ url: h.url, method: h.method, type: h.type, frame, initiator, phase: 'probe' });
+    if (!obs.destinations.some((d) => d.url === h.url && d.phase === 'probe')) obs.destinations.push({ url: h.url, method: h.method, type: h.type, frame, initiator, viaCode: rawInitiator ? obs.viaCode(rawInitiator, h.sessionId) : false, phase: 'probe' });
   }
   for (const f of logs.net.frames.slice(framesAtStart)) {
     const socket = logs.net.sockets.get(f.requestId);

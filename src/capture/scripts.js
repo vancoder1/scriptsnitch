@@ -133,5 +133,5 @@ export async function buildScripts(ctx, scriptLog, netLog, { frameOf, docUrls, i
     sources.set(s.ref.contentHash ?? s.ref.template, { source: s._entry.source, url: s.ref.url });
     delete s._entry;
   }
-  return { scripts: out, sources, refOf: (sessionId, scriptId) => byId.get(`${sessionId}:${scriptId}`)?.ref ?? null, rootRefOf: (sessionId, scriptId) => { const e = byId.get(`${sessionId}:${scriptId}`); if (!e) return null; return (e.kind === 'code' ? rootOf(e)?.ref : null) ?? e.ref; } };
+  return { scripts: out, sources, refOf: (sessionId, scriptId) => byId.get(`${sessionId}:${scriptId}`)?.ref ?? null, isCode: (sessionId, scriptId) => byId.get(`${sessionId}:${scriptId}`)?.kind === 'code', rootRefOf: (sessionId, scriptId) => { const e = byId.get(`${sessionId}:${scriptId}`); if (!e) return null; return (e.kind === 'code' ? rootOf(e)?.ref : null) ?? e.ref; } };
 }

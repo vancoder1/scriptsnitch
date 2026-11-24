@@ -56,6 +56,24 @@ test('records destinations with the script that made them', async (t) => {
   assert.equal(ping.phase, 'load');
   assert.match(ping.initiator.url, /index-B7kQ0aRz\.js$/);
   assert.equal(visit.destinations.some((d) => d.url.endsWith('.js')), false, 'script loads are not destinations');
+  assert.equal(ping.viaCode, false);
+});
+
+test('marks a destination made by code without a URL, and attributes timer-delayed pixels', async (t) => {
+  if (!browser) return t.skip('no Chrome');
+  await site.setScenario('eval-beacon');
+  try {
+    const page = { ...homePage(), url: `${site.origin('shop.test')}/login`, path: '/login' };
+    const visit = await visitPage(browser, page, 'desktop', { own: new Set([site.origin('shop.test')]) });
+    const beacon = visit.destinations.find((d) => d.url.includes('evil.test') && d.url.includes('/b?'));
+    assert.ok(beacon, 'the beacon is recorded');
+    assert.equal(beacon.viaCode, true);
+    assert.match(beacon.initiator.url, /evil\.test(:\d+)?\/s\.js$/);
+    const pixel = visit.destinations.find((d) => d.url.includes('evil.test') && d.url.includes('/px?'));
+    assert.match(pixel?.initiator?.url ?? '', /evil\.test(:\d+)?\/s\.js$/, 'a pixel sent after a timer names the script behind it');
+  } finally {
+    await site.setScenario('baseline');
+  }
 });
 
 test('keeps the final document status and headers', async (t) => {

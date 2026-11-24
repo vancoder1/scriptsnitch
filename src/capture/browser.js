@@ -82,6 +82,9 @@ function createContext(conn, browserContextId, forget) {
         await send('Network.enable', { maxResourceBufferSize: 64 * MB, maxTotalBufferSize: 256 * MB });
         await send('Debugger.enable');
         await send('Debugger.setSkipAllPauses', { skip: true });
+        // Async stacks give requests that start after a timer, a promise or the image loader's own
+        // task (new Image().src) an initiator stack naming the script behind them.
+        await send('Debugger.setAsyncCallStackDepth', { maxDepth: 32 });
         if (session.type === 'page' || session.type === 'iframe') {
           await send('Page.enable');
           await send('DOM.enable');

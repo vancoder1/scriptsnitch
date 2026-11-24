@@ -116,3 +116,12 @@ test('runs a drill visit on sensitive pages when asked, and keeps drill code out
   assert.equal(snap.run.drill, true);
   assert.equal(Object.values(snap.evidence).some((e) => e.url?.includes('drill.scriptsnitch.invalid')), false);
 });
+
+test('marks a hashed own file the build entry names as referenced', async (t) => {
+  if (!executable) return t.skip('no Chrome');
+  await site.setScenario('baseline');
+  const snap = await run(config([home()], { profiles: ['desktop'] }));
+  const scripts = snap.pages[0].profiles.desktop.visits[0].scripts;
+  assert.equal(scripts.find((s) => s.ref.url?.endsWith('/chunk-Dq9Wn3Lp.js')).referenced, true);
+  assert.equal(scripts.find((s) => s.ref.url?.endsWith('/index-B7kQ0aRz.js')).referenced, false);
+});

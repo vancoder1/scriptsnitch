@@ -34,7 +34,7 @@ const visit = {
     scripts: req({ type: 'array', items: { type: 'object', fields: {
       ref: req(scriptRef), kind: req({ type: 'string', enum: ['external', 'inline', 'code'] }), frame: req(str),
       creator: req(nullable(scriptRef)), hosts: req({ type: 'array', items: str }), band: req({ type: 'string', enum: ['plain', 'minified', 'packed'] }),
-      createsCode: req(bool), size: req(int()), sri: opt(nullable(str), null),
+      createsCode: req(bool), size: req(int()), sri: opt(nullable(str), null), referenced: opt(bool, false),
     } } }),
     destinations: req({ type: 'array', items: { type: 'object', fields: {
       url: req(str), method: req(str), type: req(str), frame: req(str), initiator: req(nullable(scriptRef)), phase: req({ type: 'string', enum: ['load', 'probe'] }),

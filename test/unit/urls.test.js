@@ -73,3 +73,11 @@ test('maskParams removes the per-visit parameters of that path only', () => {
   assert.equal(maskParams('https://tags.example/x.js?cb=7&id=GTM-1', vol), 'https://tags.example/x.js?id=GTM-1');
   assert.equal(maskParams('https://other.example/x.js?cb=7', vol), 'https://other.example/x.js?cb=7');
 });
+
+test('two scripts on one path are not volatility, and account keys are never masked', () => {
+  const gtm = (id) => `https://www.googletagmanager.com/gtm.js?id=${id}`;
+  assert.deepEqual([...findVolatileParams([gtm('GTM-A1'), gtm('GTM-B2')], [gtm('GTM-A1'), gtm('GTM-B2')])], []);
+  assert.deepEqual([...findVolatileParams([gtm('GTM-A1')], [gtm('GTM-B2')])], [], 'a container that differs between visits is a different script, never a token');
+  const w = (cb) => `https://cdn.example/widget.js?cb=${cb}`;
+  assert.deepEqual([...findVolatileParams([w('1'), w('2')], [w('3'), w('4')])], ['https://cdn.example/widget.js#cb']);
+});

@@ -1,4 +1,5 @@
 // Script URL identity (design §8 "URL kinds" and "Slots").
+import { accountKeyParams } from './hosts.js';
 
 const QUERY_VERSION_PARAMS = ['ver', 'v', 'version', '_v', 'rev'];
 
@@ -91,18 +92,32 @@ const paramKey = (u, name) => `${u.origin}${u.pathname}#${name}`;
 
 // Query parameters whose values differ between visit A and visit B for the same script path.
 export function findVolatileParams(urlsA, urlsB) {
-  const byPath = new Map();
-  for (const url of urlsB) {
-    try { const u = new URL(url); byPath.set(`${u.origin}${u.pathname}`, u.searchParams); } catch { /* not a URL */ }
-  }
+  const valuesByPath = (urls) => {
+    const out = new Map();
+    for (const url of urls) {
+      let u;
+      try { u = new URL(url); } catch { continue; }
+      const path = `${u.origin}${u.pathname}`;
+      if (!out.has(path)) out.set(path, { u, params: new Map() });
+      const { params } = out.get(path);
+      for (const [name, value] of u.searchParams) (params.get(name) ?? params.set(name, new Set()).get(name)).add(value);
+    }
+    return out;
+  };
+  const a = valuesByPath(urlsA);
+  const b = valuesByPath(urlsB);
   const out = new Set();
-  for (const url of urlsA) {
-    let u;
-    try { u = new URL(url); } catch { continue; }
-    const other = byPath.get(`${u.origin}${u.pathname}`);
+  for (const [path, { u, params }] of a) {
+    const other = b.get(path);
     if (!other) continue;
-    for (const [name, value] of u.searchParams) {
-      if (other.has(name) && other.get(name) !== value) out.add(paramKey(u, name));
+    // An account key names whose script it is; it is never a per-visit token.
+    const keyed = new Set(accountKeyParams(u.href));
+    for (const [name, values] of params) {
+      const otherValues = other.params.get(name);
+      if (keyed.has(name) || !otherValues) continue;
+      // A value seen in both visits is not per-visit: two scripts can share a path (two widgets).
+      if ([...values].some((v) => otherValues.has(v))) continue;
+      out.add(paramKey(u, name));
     }
   }
   return out;

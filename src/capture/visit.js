@@ -12,6 +12,7 @@ import { countPeers } from './peers.js';
 import { acceptConsent } from './consent.js';
 import { installDrill } from './drill.js';
 import { findValues } from '../analyze/probe-match.js';
+import { startProxy } from './proxy.js';
 
 const NO_CONSENT = { found: null, accepted: false };
 
@@ -187,7 +188,9 @@ async function probeVisit(ctx, session, page, profile, logs, scope, values, dril
 export async function visitPage(browser, page, profileName, options = {}) {
   const { role = 'A', mode = 'plain', values = null, own = new Set([page.site]), frames: framesMode = 'own', cache = newCache(), env = process.env, random = Math.random, extraSelectors = {}, drill = false } = options;
   const profile = profileFor(profileName, { chromeVersion: browser.version, random });
-  const ctx = await browser.newContext();
+  // A probe visit runs through its own proxy, cut before the context goes (see proxy.js).
+  const proxy = mode === 'probe' ? await startProxy({ rules: browser.hostRules ?? [] }) : null;
+  const ctx = await browser.newContext({ proxyServer: proxy?.url ?? null });
   ctx.onSession(async (s) => {
     if (s.type === 'page') await applyProfile(ctx, s.id, profile);
     else if (s.type === 'iframe') await applyProfile(ctx, s.id, profile, { frame: true });
@@ -226,6 +229,8 @@ export async function visitPage(browser, page, profileName, options = {}) {
     Object.defineProperty(visit, 'links', { value: obs?.dom.anchors ?? [], enumerable: false });
     return visit;
   } finally {
+    proxy?.cut();
     await ctx.dispose();
+    await proxy?.close();
   }
 }

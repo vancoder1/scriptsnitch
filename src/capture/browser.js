@@ -2,6 +2,7 @@
 // visit's own targets (design §20, result 4): Chrome's UI, new-tab page and built-in extensions are
 // released and detached. Every kept session is prepared before any of its code runs.
 import { launchChrome } from '../chrome/launch.js';
+import { parseHostRules } from './proxy.js';
 
 const KEPT_TYPES = new Set(['page', 'iframe', 'worker', 'shared_worker', 'service_worker']);
 const KEPT_URL = /^(https?|blob|data|about):/i;
@@ -30,8 +31,11 @@ export async function openBrowser({ executable, allowNoSandbox = false, extraArg
     version: chrome.version,
     conn,
     process: chrome.process,
-    async newContext() {
-      const { browserContextId } = await conn.send('Target.createBrowserContext', { disposeOnDetach: true });
+    // Chrome's own host rules, which the probe's proxy applies too.
+    hostRules: parseHostRules(extraArgs),
+    // proxyServer routes the context through a proxy; loopback names are not exempt from it.
+    async newContext({ proxyServer = null } = {}) {
+      const { browserContextId } = await conn.send('Target.createBrowserContext', { disposeOnDetach: true, ...(proxyServer ? { proxyServer, proxyBypassList: '<-loopback>' } : {}) });
       const ctx = createContext(conn, browserContextId, () => contexts.delete(browserContextId));
       contexts.set(browserContextId, ctx);
       return ctx;

@@ -19,6 +19,9 @@ function originOf(url) {
 }
 
 // The field kind of an input, from its type, autocomplete tokens, and name, id, placeholder or label.
+// The text inside a node, from its text-node descendants.
+const textOf = (node) => (node.nodeType === 3 ? node.nodeValue ?? '' : (node.children ?? []).map(textOf).join(' '));
+
 export function kindOf(node, extra = new Map()) {
   if (extra.has(node.nodeId)) return extra.get(node.nodeId);
   if (node.localName !== 'input') return null;
@@ -94,6 +97,7 @@ export async function readDom(ctx, { own, framesMode = 'own', extraSelectors = {
   const listeners = [];
   const fieldNodes = [];
   let linkHosts = new Set();
+  const anchors = [];
   let metaCsp = [];
   let title = '';
 
@@ -153,6 +157,9 @@ export async function readDom(ctx, { own, framesMode = 'own', extraSelectors = {
         if (node.localName === 'link' && LINK_RELS.test(a.rel ?? '') && a.href) {
           try { linkHosts.add(new URL(a.href, docUrl).hostname); } catch { /* not a URL */ }
         }
+        if (node.localName === 'a' && a.href && docUrl === doc.documentURL) {
+          try { anchors.push({ href: new URL(a.href, docUrl).href, text: textOf(node).replace(/\s+/g, ' ').trim().slice(0, 200) }); } catch { /* not a URL */ }
+        }
         if (node.localName === 'title' && !title && docUrl === doc.documentURL) title = (node.children ?? []).map((c) => c.nodeValue ?? '').join('').trim();
         if (node.localName === 'meta' && (a['http-equiv'] ?? '').toLowerCase() === 'content-security-policy' && a.content) metaCsp.push(a.content);
       }
@@ -164,6 +171,7 @@ export async function readDom(ctx, { own, framesMode = 'own', extraSelectors = {
     frames: [...frames.values()].map((f) => ({ origin: f.origin, tracked: f.tracked, fieldKinds: [...f.fieldKinds].sort() })),
     listeners,
     linkHosts,
+    anchors,
     metaCsp,
     title,
     fieldNodes,

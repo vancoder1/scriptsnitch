@@ -223,6 +223,7 @@ export async function visitPage(browser, page, profileName, options = {}) {
     Object.defineProperty(visit, 'sources', { value: obs?.built.sources ?? new Map(), enumerable: false });
     Object.defineProperty(visit, 'viewport', { value: profile.viewport, enumerable: false });
     Object.defineProperty(visit, 'held', { value: run.held, enumerable: false });
+    Object.defineProperty(visit, 'links', { value: obs?.dom.anchors ?? [], enumerable: false });
     return visit;
   } finally {
     await ctx.dispose();

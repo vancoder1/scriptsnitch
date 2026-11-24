@@ -48,6 +48,12 @@ function scriptTarget(d) {
   return { match: d.url, trust: 'exact', sha256: [...new Set(d.hashes ?? [d.hash])] };
 }
 
+// The trust level §9 proposes for an external script by default.
+export function suggestTrust(url, own) {
+  const cls = classifyUrl(url);
+  return scriptTarget({ url, own, kind: cls.kind, slot: slotOf(url, cls), hashes: [] }).trust;
+}
+
 const defaultBehavior = (inline = false) => ({ hosts: [], listens: [], input: false, eval: false, obfuscation: inline ? 'plain' : 'minified' });
 
 function proposalFor(f, section, today) {

@@ -10,13 +10,13 @@ import { ownOrigins } from '../analyze/hosts.js';
 export function validateMode({ configPath, approvedPath = null, cwd = process.cwd() }) {
   let config;
   try { config = loadConfig(configPath); } catch (e) {
-    if (e instanceof ConfigError) return { ok: false, issues: [{ level: 'error', message: e.message }] };
+    if (e instanceof ConfigError) return { ok: false, issues: [{ level: 'error', message: e.message, fatal: true }] };
     throw e;
   }
   const path = approvedPath ?? resolve(cwd, config.approved);
   let approved;
   try { approved = loadApproved(path) ?? emptyApproved(); } catch (e) {
-    if (e instanceof ApprovedError) return { ok: false, issues: [{ level: 'error', message: e.message }] };
+    if (e instanceof ApprovedError) return { ok: false, issues: [{ level: 'error', message: e.message, fatal: true }] };
     throw e;
   }
   const issues = validateApproved(approved).map((i) => ({ level: i.level, message: `${path} ${i.pointer || '/'}: ${i.message}` }));

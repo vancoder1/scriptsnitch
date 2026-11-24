@@ -89,12 +89,18 @@ export function createGitHub({ token, repo, apiUrl = 'https://api.github.com', f
     },
     createRef: (ref, sha) => repoCall('POST', '/git/refs', { body: { ref: `refs/${ref}`, sha } }),
     updateRef: (ref, sha, force = false) => repoCall('PATCH', `/git/refs/${enc(ref)}`, { body: { sha, force } }),
+    deleteRef: (ref) => repoCall('DELETE', `/git/refs/${enc(ref)}`),
+    // Commits on head that base lacks, with their author logins, and how far head is behind.
+    async compare(base, head) {
+      const r = await repoCall('GET', `/compare/${enc(base)}...${enc(head)}`);
+      return { aheadBy: r.ahead_by, behindBy: r.behind_by, commits: (r.commits ?? []).map((c) => ({ sha: c.sha, author: c.author?.login ?? null, message: c.commit?.message ?? '' })) };
+    },
     async getContent(path, ref) {
       const r = await orNull(repoCall('GET', `/contents/${enc(path)}?${query({ ref })}`));
       return r ? { text: Buffer.from(r.content ?? '', 'base64').toString('utf8'), sha: r.sha } : null;
     },
     putContent: (path, { text, sha, branch, message }) => repoCall('PUT', `/contents/${enc(path)}`, { body: { message, content: Buffer.from(text, 'utf8').toString('base64'), branch, ...(sha ? { sha } : {}) } }),
-    listPulls: ({ head, state = 'open' } = {}) => paginate(`/pulls?${query({ head, state })}`),
+    listPulls: ({ head, state = 'open' } = {}) => paginate(`/pulls?${query({ head: head && !head.includes(':') ? `${repo.split('/')[0]}:${head}` : head, state })}`),
     createPull: ({ title, head, base, body }) => repoCall('POST', '/pulls', { body: { title, head, base, body } }),
     updatePull: (n, patch) => repoCall('PATCH', `/pulls/${n}`, { body: patch }),
     updateBranch: (n) => repoCall('PUT', `/pulls/${n}/update-branch`, { body: {} }),

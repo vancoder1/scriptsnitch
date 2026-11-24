@@ -63,10 +63,10 @@ function proposalFor(f, section, today) {
   const add = (sectionName, id, fields) => ({ ...base, section: sectionName, id, add: fields });
   switch (f.kind) {
     case 'new-origin': case 'new-slot': case 'new-own-script':
-      return entry('scripts', { id: slug(d.url), ...scriptTarget(d), pages: pagesFor(f), behavior: d.behavior ?? defaultBehavior() });
+      return { ...entry('scripts', { id: slug(d.url), ...scriptTarget(d), pages: pagesFor(f), behavior: d.behavior ?? defaultBehavior() }), ...(d.sri && !d.own ? { sri: d.sri } : {}) };
     case 'new-version': {
       const old = section.scripts.find((e) => e.id === d.entryId);
-      return entry('scripts', { id: slug(d.url), match: d.url, trust: 'exact', sha256: [...new Set(d.hashes ?? [d.hash])], pages: old?.pages ?? pagesFor(f), behavior: mergeBehavior(old?.behavior ?? defaultBehavior(), d.behavior ?? defaultBehavior()) });
+      return { ...entry('scripts', { id: slug(d.url), match: d.url, trust: 'exact', sha256: [...new Set(d.hashes ?? [d.hash])], pages: old?.pages ?? pagesFor(f), behavior: mergeBehavior(old?.behavior ?? defaultBehavior(), d.behavior ?? defaultBehavior()) }), ...(d.sri ? { sri: d.sri } : {}) };
     }
     case 'new-inline': {
       const behavior = d.behavior ?? defaultBehavior(true);

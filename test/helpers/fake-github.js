@@ -17,11 +17,24 @@ export function createFakeGitHub(initial = {}) {
 
   const trees = {};
   const commits = {};
-  const commit = (tree, parent, message, author = 'scriptsnitch') => {
-    const sha = hash(JSON.stringify([tree, parent, message, clock]));
+  // Commits made through the API with the job's token are authored by the bot, as on GitHub.
+  const commit = (tree, parents, message, author = 'github-actions[bot]') => {
+    const list = [parents].flat().filter(Boolean);
+    const sha = hash(JSON.stringify([tree, list, message, clock]));
     trees[sha] = tree;
-    commits[sha] = { sha, parent, commit: { message, author: { name: author, date: tick() } }, author: { login: author } };
+    commits[sha] = { sha, parents: list, parent: list[0] ?? null, commit: { message, author: { name: author, date: tick() } }, author: { login: author } };
     return sha;
+  };
+  const ancestors = (sha) => {
+    const seen = new Set();
+    const stack = [sha];
+    while (stack.length) {
+      const c = stack.pop();
+      if (!c || seen.has(c) || !commits[c]) continue;
+      seen.add(c);
+      stack.push(...commits[c].parents);
+    }
+    return seen;
   };
   const refs = {};
   for (const [branch, files] of Object.entries(initial.contents ?? { main: {} })) refs[`heads/${branch}`] = commit({ ...files }, null, 'initial');
@@ -118,10 +131,33 @@ export function createFakeGitHub(initial = {}) {
       Object.assign(p, patch);
       return structuredClone(p);
     },
+    // Merges base into the pull request's branch (a merge commit, never a force-push).
     async updateBranch(n) {
       const p = state.pulls.find((x) => x.number === n);
       if (!p) throw notFound(`pull ${n}`);
+      const headRef = `heads/${p.head.ref}`;
+      const head = state.refs[headRef];
+      const base = state.refs[`heads/${p.base.ref}`];
+      const fromHead = ancestors(head);
+      if (fromHead.has(base)) return { message: 'Already up to date.' };
+      const mergeBase = [...ancestors(base)].filter((c) => fromHead.has(c)).sort((x, y) => commits[y].commit.author.date.localeCompare(commits[x].commit.author.date))[0];
+      const merged = { ...trees[base] };
+      for (const [path, text] of Object.entries(trees[head])) if (text !== trees[mergeBase]?.[path]) merged[path] = text;
+      state.refs[headRef] = commit(merged, [head, base], `Merge branch '${p.base.ref}' into ${p.head.ref}`);
       return { message: 'Updating pull request branch.' };
+    },
+    async compare(base, head) {
+      const b = state.refs[`heads/${base}`] ?? base;
+      const h = state.refs[`heads/${head}`] ?? head;
+      const fromBase = ancestors(b);
+      const fromHead = ancestors(h);
+      const ahead = [...fromHead].filter((c) => !fromBase.has(c));
+      return { aheadBy: ahead.length, behindBy: [...fromBase].filter((c) => !fromHead.has(c)).length, commits: ahead.map((c) => ({ sha: c, author: commits[c].author.login, message: commits[c].commit.message })) };
+    },
+    async deleteRef(ref) {
+      if (!state.refs[ref]) throw notFound(ref);
+      delete state.refs[ref];
+      return null;
     },
     async listCommits({ sha = 'main', path } = {}) {
       const out = [];

@@ -11,6 +11,7 @@ import { createCollector, scriptIdentity } from './keys.js';
 import { DRILL_ORIGIN } from '../capture/drill.js';
 import { TRACKED_HEADERS } from './headers.js';
 import { isoDate } from '../util/time.js';
+import { short } from '../util/hash.js';
 
 const CONTENT_KINDS = new Set(['new-origin', 'new-slot', 'new-version', 'content-mismatch', 'in-place-change', 'own-change', 'new-own-script', 'build-file', 'new-inline', 'cloaking', 'accepted']);
 const BEHAVIOUR_SIGNS = new Set(['new-destination', 'listener', 'input-code', 'probe-exfil']);
@@ -94,6 +95,21 @@ function judgeSite(args) {
   return ctx;
 }
 
+// When every page of a site was conclusive, the per-file state is cut down to what this run loaded,
+// so hashes, accepted templates and entry slots of old builds do not pile up in the status marker.
+function prune(st, pages) {
+  const seen = pages.flatMap((p) => Object.values(p.profiles).filter((r) => r?.conclusive).flatMap((r) => r.visits).filter((v) => v.conclusive && v.role !== 'drill').map((v) => ({ v, path: p.path })));
+  const urls = new Set(seen.flatMap(({ v }) => v.scripts.map((s) => s.ref.url).filter(Boolean)));
+  for (const url of Object.keys(st.ownHashes)) if (!urls.has(url)) delete st.ownHashes[url];
+  const templates = new Map();
+  for (const { v, path } of seen) for (const s of v.scripts) if (s.kind === 'inline') (templates.get(path) ?? templates.set(path, new Set()).get(path)).add(short(s.ref.template));
+  for (const path of Object.keys(st.inline)) {
+    const keep = st.inline[path].filter((t) => templates.get(path)?.has(t));
+    if (keep.length) st.inline[path] = keep;
+    else delete st.inline[path];
+  }
+}
+
 function notSeen(ctx) {
   const judged = ctx.pages.filter((p) => Object.values(p.profiles).some((r) => r?.conclusive));
   for (const e of ctx.section.scripts) {
@@ -160,8 +176,10 @@ export function judge({ snapshot, approved, state, now = Date.now() }) {
       }
     }
     // Entry slots of pages that were inconclusive this run are kept, so a replacement next run is
-    // still recognised as a deploy.
-    ctx.st.entrySlots = { ...(ctx.st.entrySlots ?? {}), ...ctx.entry.current };
+    // still recognised as a deploy; when all were conclusive, only this run's slots are kept.
+    const allConclusive = pages.every((p) => Object.values(p.profiles).every((r) => !r || r.conclusive));
+    if (allConclusive) prune(ctx.st, pages);
+    ctx.st.entrySlots = allConclusive ? ctx.entry.current : { ...(ctx.st.entrySlots ?? {}), ...ctx.entry.current };
     ctx.st.marker = ctx.marker ?? ctx.st.marker;
     // Drill visits are judged on a throwaway copy of the state, so they change nothing that lasts.
     const scratch = structuredClone({ ...status, sites: { ...status.sites, [site]: state.sites?.[site] } });

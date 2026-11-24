@@ -4,7 +4,7 @@ import { judge, combine, confirm } from '../../src/analyze/judge.js';
 import { firstRunSplit } from '../../src/analyze/firstrun.js';
 import { findingKey } from '../../src/analyze/keys.js';
 import { DRILL_ORIGIN } from '../../src/capture/drill.js';
-import { SITE, H, ext, code, scriptRef, visit, snapshot, entry, approved, config, state } from '../helpers/snapshots.js';
+import { SITE, H, ext, inline, code, scriptRef, visit, snapshot, entry, approved, config, state } from '../helpers/snapshots.js';
 
 const run = (snap, appr, st = state()) => judge({ snapshot: snap, approved: appr, config: config(snap.pages.map((p) => ({ path: p.path, sensitive: p.sensitive }))), state: st, now: Date.UTC(2026, 10, 24) });
 const kinds = (r) => r.findings.map((f) => `${f.kind}:${f.severity}`).sort();
@@ -283,4 +283,20 @@ test('new-script findings carry the behaviour seen, and header findings the valu
   assert.deepEqual(f.sensitivePages, ['/checkout']);
   const h = r.findings.find((x) => x.kind === 'headers-weaker');
   assert.deepEqual([h.subject, h.data.value], ['x-frame-options', null]);
+});
+
+test('state stays bounded: hashes, templates and entry slots of files no longer loaded go when every page was conclusive', () => {
+  const appr = approved({ scripts: [entry({ id: 'build', match: `${SITE}/assets/*-{token}.js`, trust: 'deploy', pages: ['**', '/login'] }), entry({ id: 'in', match: 'inline', trust: 'deploy' })] });
+  const st = state();
+  st.sites[SITE] = { entrySlots: { [`${SITE}/assets/index-{token}.js`]: 'B7kQ0aRz', [`${SITE}/assets/old-{token}.js`]: 'Aa11Bb22' }, marker: null, ownHashes: { [`${SITE}/assets/index-B7kQ0aRz.js`]: H(`${SITE}/assets/index-B7kQ0aRz.js`).slice(0, 12), [`${SITE}/assets/gone-Zz99Yy88.js`]: 'abcdefabcdef' }, inline: { '/': ['a'.repeat(12), 'f'.repeat(12)] }, deployTokens: [], seen: {}, domains: {}, domainCheck: null };
+  const pages = (conclusive) => snapshot([
+    { path: '/', observed: { scripts: [ext(`${SITE}/assets/index-B7kQ0aRz.js`), inline('a'.repeat(64))] } },
+    { path: '/login', sensitive: true, conclusive, observed: { scripts: [ext(`${SITE}/assets/index-B7kQ0aRz.js`)] } },
+  ]);
+  const kept = run(pages(false), appr, st).state.sites[SITE];
+  assert.ok(`${SITE}/assets/gone-Zz99Yy88.js` in kept.ownHashes, 'kept while a page was inconclusive');
+  const pruned = run(pages(true), appr, st).state.sites[SITE];
+  assert.deepEqual(Object.keys(pruned.ownHashes), [`${SITE}/assets/index-B7kQ0aRz.js`]);
+  assert.deepEqual(Object.keys(pruned.entrySlots), [`${SITE}/assets/index-{token}.js`]);
+  assert.deepEqual(pruned.inline['/'], ['a'.repeat(12)]);
 });

@@ -146,6 +146,13 @@ function judgeProbe(ctx, page, profile, v, id) {
   }
   const typed = [...new Set(v.fields.map((f) => f.kind).filter((k) => SENSITIVE.has(k)))].sort();
   for (const g of v.probe.growth) {
+    const request = requestOf(g.url).url;
+    let path = '';
+    try { const u = new URL(request); path = `${u.origin}${u.pathname}`; } catch { path = ''; }
+    if (path && STATIC_PATH.test(path)) {
+      ctx.add({ ...base, kind: 'probe-exfil', subject: `static ${path}`, severity: 'high', reasons: [`the ${g.field || 'body'} of a request to a static-file path grew with the length of the values typed; no approval can allow this`], evidence: [clip(request)], data: { url: request, kinds: typed.length ? typed : ['card'], approvable: false, page: page.path } });
+      continue;
+    }
     const entries = covering(g.url);
     if (entries.some((e) => e.receives?.length)) continue;
     const endpoint = endpointOf(requestOf(g.url).url, methodOf(g.url));

@@ -336,3 +336,11 @@ test('a value hit and a growing payload to the same endpoint are one finding, wh
   const r = run(withProbe('/login', [ext(APP)], { destinations: [dest(url, { phase: 'probe' })], probe: p }, { sensitive: true }), appr);
   assert.deepEqual(r.findings.filter((f) => f.kind === 'probe-exfil').map((f) => f.subject), ['GET https://c2.example/p']);
 });
+
+test('a growing payload sent to a static-file path is the same never-approvable static finding', () => {
+  const appr = approved({ scripts: [appEntry({ input: true })], destinations: [{ match: SITE, pages: ['**', '/login'], reason: 'r', approved: '2026-11-01' }] });
+  const url = `${SITE}/img/pixel.gif?d=cHctMTIzNDU2`;
+  const p = { values: { password: 'pw-123456' }, submitted: true, hits: [{ kind: 'password', encoding: 'base64', url, frame: 'top', initiator: null }], growth: [{ url: `${SITE}/img/pixel.gif`, field: 'query:d' }], storage: [] };
+  const r = run(withProbe('/login', [ext(APP)], { destinations: [dest(url, { type: 'Image', phase: 'probe' })], probe: p }, { sensitive: true }), appr);
+  assert.deepEqual(r.findings.filter((f) => f.kind === 'probe-exfil').map((f) => f.subject), [`static ${SITE}/img/pixel.gif`]);
+});

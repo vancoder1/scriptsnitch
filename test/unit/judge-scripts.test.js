@@ -1,0 +1,133 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { judge } from '../../src/analyze/judge.js';
+import { findingKey } from '../../src/analyze/keys.js';
+import { SITE, H, ext, inline, visit, snapshot, entry, approved, config, state } from '../helpers/snapshots.js';
+
+const run = (snap, appr, st = state()) => judge({ snapshot: snap, approved: appr, config: config(snap.pages.map((p) => ({ path: p.path, sensitive: p.sensitive }))), state: st, now: Date.UTC(2026, 10, 24) });
+const kinds = (r) => r.findings.map((f) => `${f.kind}:${f.severity}`).sort();
+const one = (path, observed, extra = {}) => snapshot([{ path, observed, ...extra }]);
+const JQ = 'https://cdn.example/npm/jquery@3.7.1/dist/jquery.min.js';
+const jqEntry = entry({ id: 'jq', match: JQ, trust: 'exact', sha256: [H(JQ)] });
+
+test('an approved exact script raises nothing', () => {
+  assert.deepEqual(kinds(run(one('/', { scripts: [ext(JQ)] }), approved({ scripts: [jqEntry] }))), []);
+});
+
+test('new-origin is High for a script from an unapproved origin', () => {
+  const r = run(one('/', { scripts: [ext('https://evil.example/x.js')] }), approved({ scripts: [jqEntry] }));
+  assert.deepEqual(kinds(r), ['new-origin:high']);
+  assert.equal(r.findings[0].key, findingKey('new-origin', 'https://evil.example/x.js', '*'));
+});
+
+test('new-origin is High for a new slot on a path-shared host', () => {
+  const r = run(one('/', { scripts: [ext(JQ), ext('https://cdn.jsdelivr.net/gh/evil/x@1/x.js')] }), approved({ scripts: [entry({ id: 'jsd', match: 'https://cdn.jsdelivr.net/npm/a@1.0.0/a.js', trust: 'exact', sha256: [H('a')] }), jqEntry] }));
+  assert.deepEqual(kinds(r), ['new-origin:high']);
+});
+
+test('new-origin is High for a new account key on an approved service', () => {
+  const mine = 'https://www.googletagmanager.com/gtm.js?id=GTM-MINE';
+  const r = run(one('/', { scripts: [ext(mine), ext('https://www.googletagmanager.com/gtm.js?id=GTM-EVIL')] }), approved({ scripts: [entry({ id: 'gtm', match: mine, trust: 'origin' })] }));
+  assert.deepEqual(kinds(r), ['new-origin:high']);
+  assert.match(r.findings[0].subject, /GTM-EVIL/);
+});
+
+test('new-slot is Medium at an approved origin', () => {
+  const r = run(one('/', { scripts: [ext('https://chat.example/widget.js'), ext('https://chat.example/extra.js')] }), approved({ scripts: [entry({ id: 'chat', match: 'https://chat.example/widget.js', trust: 'origin' })] }));
+  assert.deepEqual(kinds(r), ['new-slot:medium']);
+});
+
+test('scope is Medium for an approved script newly on a sensitive page', () => {
+  const r = run(one('/checkout', { scripts: [ext(JQ)] }, { sensitive: true }), approved({ scripts: [jqEntry] }));
+  assert.deepEqual(kinds(r), ['scope:medium']);
+  assert.equal(r.findings[0].page, '/checkout');
+});
+
+test('new-version is Medium for an exact third-party upgrade', () => {
+  const v380 = JQ.replace('3.7.1', '3.8.0');
+  const r = run(one('/', { scripts: [ext(v380)] }), approved({ scripts: [jqEntry] }));
+  assert.deepEqual(kinds(r), ['new-version:medium']);
+  assert.match(r.findings[0].reasons.join(' '), /3\.7\.1.*3\.8\.0/);
+});
+
+test('content-mismatch is High at an approved exact URL, including two unapproved variants in visits A and B', () => {
+  assert.deepEqual(kinds(run(one('/', { scripts: [ext(JQ, { hash: H('tampered') })] }), approved({ scripts: [jqEntry] }))), ['content-mismatch:high']);
+  const snap = snapshot([{ path: '/', visits: [visit({ role: 'A', scripts: [ext(JQ, { hash: H('v1') })] }), visit({ role: 'B', scripts: [ext(JQ, { hash: H('v2') })] })] }]);
+  const r = run(snap, approved({ scripts: [jqEntry] }));
+  assert.deepEqual(kinds(r), ['content-mismatch:high']);
+  assert.equal(r.findings[0].evidence.length, 2);
+});
+
+test('in-place-change is High at an unchanged hashed name and at an own path-versioned URL', () => {
+  const own = approved({ scripts: [entry({ id: 'build', match: `${SITE}/assets/*.{token}.js`, trust: 'deploy' }), entry({ id: 'mz', match: `${SITE}/js/modernizr-{version}.min.js`, trust: 'deploy' })] });
+  const st = state();
+  st.sites[SITE] = { entrySlots: {}, marker: null, ownHashes: { [`${SITE}/assets/main.3f2a1c9b.js`]: H('old').slice(0, 12), [`${SITE}/js/modernizr-2.6.2.min.js`]: H('mz-old').slice(0, 12) }, inline: {}, deployTokens: [], seen: {}, domains: {}, domainCheck: null };
+  const r = run(one('/', { scripts: [ext(`${SITE}/assets/main.3f2a1c9b.js`, { hash: H('new') }), ext(`${SITE}/js/modernizr-2.6.2.min.js`, { hash: H('mz-skimmer') })] }), own, st);
+  assert.deepEqual(kinds(r), ['in-place-change:high', 'in-place-change:high']);
+});
+
+test('own-change is Medium on sensitive pages and Info elsewhere without deploy evidence, and accepted with it', () => {
+  const appr = approved({ scripts: [entry({ id: 'app', match: `${SITE}/js/app.js`, trust: 'deploy', pages: ['**', '/login'] })] });
+  const prior = () => { const st = state(); st.sites[SITE] = { entrySlots: { [`${SITE}/assets/index-{token}.js`]: 'B7kQ0aRz' }, marker: null, ownHashes: { [`${SITE}/js/app.js`]: H('before').slice(0, 12) }, inline: {}, deployTokens: [], seen: {}, domains: {}, domainCheck: null }; return st; };
+  const changed = (path, sensitive, extra = []) => run(snapshot([{ path, sensitive, observed: { scripts: [ext(`${SITE}/js/app.js`, { hash: H('after') }), ...extra] } }]), appr, prior());
+  assert.deepEqual(kinds(changed('/login', true)), ['own-change:medium']);
+  const home = changed('/', false);
+  assert.deepEqual(kinds(home), []);
+  assert.deepEqual(home.info.map((f) => f.kind), ['own-change']);
+  const deployed = changed('/login', true, [ext(`${SITE}/assets/index-C9xR1bTp.js`)]);
+  assert.deepEqual(kinds(deployed).filter((k) => k.startsWith('own-change')), []);
+});
+
+test('new-own-script is High on sensitive pages and Medium elsewhere', () => {
+  const appr = approved({ scripts: [entry({ id: 'app', match: `${SITE}/js/app.js`, trust: 'deploy', pages: ['**', '/login'] })] });
+  const obs = { scripts: [ext(`${SITE}/js/app.js`), ext(`${SITE}/js/new-thing.js`)] };
+  assert.deepEqual(kinds(run(one('/login', obs, { sensitive: true }), appr)), ['new-own-script:high']);
+  assert.deepEqual(kinds(run(one('/', obs), appr)), ['new-own-script:medium']);
+});
+
+test('build-file follows the chunk map and deploy evidence', () => {
+  const appr = approved({ scripts: [entry({ id: 'build', match: `${SITE}/assets/*-{token}.js`, trust: 'deploy' })] });
+  const st = () => { const s = state(); s.sites[SITE] = { entrySlots: { [`${SITE}/assets/index-{token}.js`]: 'B7kQ0aRz' }, marker: null, ownHashes: {}, inline: {}, deployTokens: [], seen: {}, domains: {}, domainCheck: null }; return s; };
+  const entryJs = ext(`${SITE}/assets/index-B7kQ0aRz.js`);
+  assert.deepEqual(kinds(run(one('/', { scripts: [entryJs, ext(`${SITE}/assets/chunk-Dq9Wn3Lp.js`, { referenced: true, creator: `${SITE}/assets/index-B7kQ0aRz.js` })] }), appr, st())), []);
+  assert.deepEqual(kinds(run(one('/', { scripts: [entryJs, ext(`${SITE}/assets/evil-Zz9Yy8Xx.js`, { creator: `${SITE}/assets/index-B7kQ0aRz.js` })] }), appr, st())), ['build-file:medium']);
+  assert.deepEqual(kinds(run(one('/', { scripts: [ext(`${SITE}/assets/index-C9xR1bTp.js`), ext(`${SITE}/assets/evil-Zz9Yy8Xx.js`, { creator: `${SITE}/assets/index-C9xR1bTp.js` })] }), appr, st())), []);
+});
+
+test('new-inline: High on sensitive pages without a deploy, Medium with one; deploy-trust inline accepted with deploy evidence', () => {
+  const t1 = 'a'.repeat(64);
+  const t2 = 'b'.repeat(64);
+  const appr = approved({ own: [], scripts: [entry({ id: 'build', match: `${SITE}/assets/*-{token}.js`, trust: 'deploy', pages: ['**', '/login'] }), entry({ id: 'in-login', match: 'inline', trust: 'exact', template: [t1], pages: ['/login'] }), entry({ id: 'in-home', match: 'inline', trust: 'deploy', pages: ['**'] })] });
+  const st = () => { const s = state(); s.sites[SITE] = { entrySlots: { [`${SITE}/assets/index-{token}.js`]: 'B7kQ0aRz' }, marker: null, ownHashes: {}, inline: { '/': [t1.slice(0, 12)] }, deployTokens: [], seen: {}, domains: {}, domainCheck: null }; return s; };
+  const same = ext(`${SITE}/assets/index-B7kQ0aRz.js`);
+  const deployed = ext(`${SITE}/assets/index-C9xR1bTp.js`);
+  assert.deepEqual(kinds(run(one('/login', { scripts: [same, inline(t2)] }, { sensitive: true }), appr, st())), ['new-inline:high']);
+  assert.deepEqual(kinds(run(one('/login', { scripts: [deployed, inline(t2)] }, { sensitive: true }), appr, st())), ['new-inline:medium']);
+  assert.deepEqual(kinds(run(one('/', { scripts: [deployed, inline(t2)] }), appr, st())), []);
+  assert.deepEqual(kinds(run(one('/', { scripts: [same, inline(t2)] }), appr, st())), ['new-inline:medium']);
+});
+
+test('cloaking is High when Chrome and a direct fetch got different bytes', () => {
+  const url = 'https://cdn.example/lib@2.0.0/lib.js';
+  const snap = one('/', { scripts: [ext(url, { hash: H('skimmer') })] });
+  snap.crossCheck = [{ url, chromeHash: H('skimmer'), directHash: H('clean'), note: null }];
+  assert.ok(kinds(run(snap, approved({ scripts: [jqEntry] }))).includes('cloaking:high'));
+});
+
+test('a script an approved origin loader injects from the same vendor inherits its trust', () => {
+  const loader = 'https://www.google.com/recaptcha/api.js';
+  const release = 'https://www.gstatic.com/recaptcha/releases/abc123/recaptcha__en.js';
+  const r = run(one('/', { scripts: [ext(loader), ext(release, { creator: loader })] }), approved({ scripts: [entry({ id: 'recaptcha', match: loader, trust: 'origin' })] }));
+  assert.deepEqual(kinds(r), []);
+});
+
+test('the same finding on desktop and mobile is one finding with both profiles', () => {
+  const snap = snapshot([{ path: '/', profiles: ['desktop', 'mobile'], observed: { scripts: [ext('https://evil.example/x.js')] } }]);
+  const r = run(snap, approved({ scripts: [] }));
+  assert.equal(r.findings.length, 1);
+  assert.deepEqual(r.findings[0].profiles, ['desktop', 'mobile']);
+});
+
+test('inconclusive profiles produce no findings', () => {
+  assert.deepEqual(kinds(run(snapshot([{ path: '/', conclusive: false, observed: { scripts: [ext('https://evil.example/x.js')] } }]), approved({}))), []);
+});

@@ -90,6 +90,7 @@ export async function readDom(ctx, { own, framesMode = 'own', extraSelectors = {
   const fieldNodes = [];
   let linkHosts = new Set();
   let metaCsp = [];
+  let title = '';
 
   for (const session of ctx.sessions.values()) {
     if (session.type !== 'page' && session.type !== 'iframe') continue;
@@ -147,6 +148,7 @@ export async function readDom(ctx, { own, framesMode = 'own', extraSelectors = {
         if (node.localName === 'link' && LINK_RELS.test(a.rel ?? '') && a.href) {
           try { linkHosts.add(new URL(a.href, docUrl).hostname); } catch { /* not a URL */ }
         }
+        if (node.localName === 'title' && !title && docUrl === doc.documentURL) title = (node.children ?? []).map((c) => c.nodeValue ?? '').join('').trim();
         if (node.localName === 'meta' && (a['http-equiv'] ?? '').toLowerCase() === 'content-security-policy' && a.content) metaCsp.push(a.content);
       }
     }
@@ -158,6 +160,7 @@ export async function readDom(ctx, { own, framesMode = 'own', extraSelectors = {
     listeners,
     linkHosts,
     metaCsp,
+    title,
     fieldNodes,
   };
 }

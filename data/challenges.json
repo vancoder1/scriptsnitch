@@ -1,0 +1,12 @@
+[
+  { "vendor": "Cloudflare", "header": "cf-mitigated", "value": "challenge" },
+  { "vendor": "Cloudflare", "title": "Just a moment..." },
+  { "vendor": "Cloudflare", "title": "Attention Required! | Cloudflare" },
+  { "vendor": "Akamai", "title": "Access Denied", "status": 403 },
+  { "vendor": "HUMAN (PerimeterX)", "title": "Access to this page has been denied" },
+  { "vendor": "HUMAN (PerimeterX)", "scriptHost": "captcha.px-cdn.net" },
+  { "vendor": "DataDome", "header": "x-datadome" , "status": 403 },
+  { "vendor": "DataDome", "scriptHost": "ct.captcha-delivery.com" },
+  { "vendor": "Imperva", "title": "Request unsuccessful. Incapsula incident ID" },
+  { "vendor": "Queue-it", "finalHost": "queue-it.net" }
+]

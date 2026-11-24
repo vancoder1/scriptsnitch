@@ -29,7 +29,7 @@ const visit = {
     role: req({ type: 'string', enum: ['A', 'B', 'replacement', 'confirm', 'probe', 'probe2', 'drill'] }),
     conclusive: req(bool),
     reason: req(nullable(str)),
-    document: req({ type: 'object', fields: { status: req(int()), finalUrl: req(str), headers: req({ type: 'object', values: str }), metaCsp: req({ type: 'array', items: str }) } }),
+    document: req({ type: 'object', fields: { status: req(int()), finalUrl: req(str), headers: req({ type: 'object', values: str }), metaCsp: req({ type: 'array', items: str }), title: opt(str, '') } }),
     consent: req({ type: 'object', fields: { found: req(nullable(str)), accepted: req(bool) } }),
     scripts: req({ type: 'array', items: { type: 'object', fields: {
       ref: req(scriptRef), kind: req({ type: 'string', enum: ['external', 'inline', 'code'] }), frame: req(str),

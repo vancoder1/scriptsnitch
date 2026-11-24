@@ -5,7 +5,7 @@ import { createScriptLog, buildScripts } from './scripts.js';
 import { createNetLog } from './network.js';
 import { profileFor, applyProfile } from './profiles.js';
 import { settle, scrollToBottom } from './settle.js';
-import { runSteps, navigate } from './steps.js';
+import { runSteps, navigate, querySelector } from './steps.js';
 import { readDom } from './dom.js';
 
 export const newCache = () => ({ sources: new Map(), bodies: new Map(), analysis: new Map() });
@@ -52,6 +52,14 @@ async function load(ctx, session, page, profile, logs, env) {
   return first.timedOut && logs.scripts.parsed.length === 0 ? 'timed out' : null;
 }
 
+async function expectPresent(ctx, sessionId, expect) {
+  if (expect.selector) return Boolean(await querySelector(ctx, sessionId, expect.selector));
+  const search = await ctx.send('DOM.performSearch', { query: expect.text }, sessionId).catch(() => null);
+  if (!search) return false;
+  await ctx.send('DOM.discardSearchResults', { searchId: search.searchId }, sessionId).catch(() => {});
+  return search.resultCount > 0;
+}
+
 export async function visitPage(browser, page, profileName, { role = 'A', own = new Set([page.site]), frames: framesMode = 'own', cache = newCache(), env = process.env, random = Math.random, extraSelectors = {} } = {}) {
   const profile = profileFor(profileName, { chromeVersion: browser.version, random });
   const ctx = await browser.newContext();
@@ -62,7 +70,8 @@ export async function visitPage(browser, page, profileName, { role = 'A', own = 
   const logs = { scripts: createScriptLog(ctx), net: createNetLog(ctx) };
   try {
     const session = await ctx.newPage();
-    const reason = await load(ctx, session, page, profile, logs, env);
+    let reason = await load(ctx, session, page, profile, logs, env);
+    if (!reason && page.expect && !(await expectPresent(ctx, session.id, page.expect))) reason = 'expected content missing';
 
     const { frames, mainFrameId } = await frameMap(ctx);
     const docUrls = new Map();
@@ -120,7 +129,7 @@ export async function visitPage(browser, page, profileName, { role = 'A', own = 
       role,
       conclusive: !reason,
       reason,
-      document: { status: doc?.status ?? 0, finalUrl, headers: doc?.responseHeaders ?? {}, metaCsp: dom?.metaCsp ?? [] },
+      document: { status: doc?.status ?? 0, finalUrl, headers: doc?.responseHeaders ?? {}, metaCsp: dom?.metaCsp ?? [], title: dom?.title ?? '' },
       consent: { found: null, accepted: false },
       scripts: reason ? [] : built.scripts,
       destinations: reason ? [] : destinations,

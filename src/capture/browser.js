@@ -29,6 +29,7 @@ export async function openBrowser({ executable, allowNoSandbox = false, extraArg
   return {
     version: chrome.version,
     conn,
+    process: chrome.process,
     async newContext() {
       const { browserContextId } = await conn.send('Target.createBrowserContext', { disposeOnDetach: true });
       const ctx = createContext(conn, browserContextId, () => contexts.delete(browserContextId));

@@ -105,13 +105,23 @@ function judgeDestinations(ctx, page, profile, v, id, loadHosts) {
     // A host that only a probe visit shows appeared once the network was held.
     const duringProbe = Boolean(v.probe) && !loadHosts.has(raw.toLowerCase());
     for (const leak of leaks) {
-      ctx.add({ ...base, kind: 'probe-exfil', subject: `${subject} ${leak.kind}`, severity: 'high', reasons: [`a ${leak.kind} value from the probe was put into a host name under ${host} (a dns-prefetch or preconnect hint), which leaks it without any request`], evidence: [raw], data: { url: subject, kind: leak.kind, destination: subject, approvable: false, page: page.path } });
+      ctx.add({ ...base, kind: 'probe-exfil', subject: `link ${subject}`, severity: 'high', reasons: [`a ${leak.kind} value from the probe was put into a host name under ${host} (a dns-prefetch or preconnect hint), which leaks it without any request; no approval can allow this`], evidence: [raw], data: { url: subject, kinds: [leak.kind], approvable: false, page: page.path } });
     }
     const covering = forPage.filter((d) => hostMatches(patternHost(d.match), host));
     for (const e of covering) ctx.markSeen('destinations', e);
     if (covering.length) continue;
     ctx.add({ ...base, kind: 'new-destination', subject, severity: duringProbe ? 'high' : 'medium', reasons: [duringProbe ? `a <link> prefetch or preconnect to ${host}, added while the probe held the network` : `a <link> prefetch or preconnect to ${host}, which no destination entry approves`], evidence: [raw], data: { url: subject, method: 'GET', type: 'Link', destination: subject, page: page.path, sensitive: page.sensitive } });
   }
+}
+
+// The endpoint a probe value went to: method, origin and path, plus the account key on keyed
+// services. A `receives` approval is for one endpoint, never for a whole origin: a collector
+// planted elsewhere on the same site must still be caught.
+export function endpointOf(url, method) {
+  let u;
+  try { u = new URL(url); } catch { return `${method} ${url}`; }
+  const key = accountKey(url);
+  return `${method} ${u.protocol}//${u.host}${u.pathname}${key?.where === 'query' ? `?${key.param}=${key.key}` : ''}`;
 }
 
 function judgeProbe(ctx, page, profile, v, id) {
@@ -122,25 +132,25 @@ function judgeProbe(ctx, page, profile, v, id) {
   for (const h of v.probe.hits) {
     let u;
     try { u = new URL(h.url); } catch { u = null; }
-    const subject = destinationSubject(h.url);
     if (u && STATIC_PATH.test(u.pathname)) {
-      ctx.add({ ...base, kind: 'probe-exfil', subject: `static ${u.origin}${u.pathname} ${h.kind}`, severity: 'high', attributedTo: h.initiator, reasons: [`a ${h.kind} value from the probe was sent to a static-file path (${h.encoding}); no approval can allow this`], evidence: [clip(h.url)], data: { url: h.url, kind: h.kind, approvable: false, page: page.path } });
+      ctx.add({ ...base, kind: 'probe-exfil', subject: `static ${u.origin}${u.pathname}`, severity: 'high', attributedTo: h.initiator, reasons: [`a ${h.kind} value from the probe was sent to a static-file path (${h.encoding}); no approval can allow this`], evidence: [clip(h.url)], data: { url: h.url, kinds: [h.kind], approvable: false, page: page.path } });
       continue;
     }
     const entries = covering(h.url);
     if (entries.some((e) => e.receives?.includes(h.kind))) continue;
-    ctx.add({ ...base, kind: 'probe-exfil', subject: `${subject} ${h.kind}`, severity: 'high', attributedTo: h.initiator, reasons: [`a ${h.kind} value from the probe reached ${subject} (${h.encoding}), which may not receive it`], evidence: [clip(h.url)], data: { url: h.url, kind: h.kind, destination: subject, entry: entries[0]?.match ?? null, approvable: true, page: page.path } });
+    const endpoint = endpointOf(h.url, methodOf(h.url));
+    ctx.add({ ...base, kind: 'probe-exfil', subject: endpoint, severity: 'high', attributedTo: h.initiator, reasons: [`a ${h.kind} value from the probe reached ${endpoint} (${h.encoding}), which may not receive it`], evidence: [clip(h.url)], data: { url: h.url, endpoint, kinds: [h.kind], approvable: true, page: page.path } });
   }
   const typed = [...new Set(v.fields.map((f) => f.kind).filter((k) => SENSITIVE.has(k)))].sort();
   for (const g of v.probe.growth) {
     const entries = covering(g.url);
     if (entries.some((e) => e.receives?.length)) continue;
-    const subject = destinationSubject(g.url);
-    ctx.add({ ...base, kind: 'probe-exfil', subject: `${subject} growth`, severity: 'high', reasons: [`the ${g.field} of a request to ${subject} grew with the length of the values typed, as an encrypted copy would`], evidence: [clip(g.url)], data: { url: g.url, destination: subject, kinds: typed.length ? typed : ['card'], entry: entries[0]?.match ?? null, approvable: true, page: page.path } });
+    const endpoint = endpointOf(g.url, methodOf(g.url));
+    ctx.add({ ...base, kind: 'probe-exfil', subject: endpoint, severity: 'high', reasons: [`the ${g.field || 'body'} of a request to ${endpoint} grew with the length of the values typed, as an encrypted copy would`], evidence: [clip(g.url)], data: { url: g.url, endpoint, kinds: typed.length ? typed : ['card'], approvable: true, page: page.path } });
   }
   for (const s of v.probe.storage) {
     if (!STORAGE_KINDS.has(s.kind)) continue;
-    ctx.add({ ...base, kind: 'probe-exfil', subject: `storage ${s.kind} ${s.where}`, severity: 'high', reasons: [`a ${s.kind} value from the probe was kept in ${s.where}; no approval can allow this`], data: { kind: s.kind, where: s.where, approvable: false, page: page.path } });
+    ctx.add({ ...base, kind: 'probe-exfil', subject: `storage ${s.kind} ${s.where}`, severity: 'high', reasons: [`a ${s.kind} value from the probe was kept in ${s.where}; no approval can allow this`], data: { kinds: [s.kind], where: s.where, approvable: false, page: page.path } });
   }
 }
 

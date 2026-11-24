@@ -173,3 +173,15 @@ test('approve --id moves a pending item; --all adds only routine findings; --hea
   approveMode({ ...args, headers: true });
   assert.deepEqual(read().headers, { '**': { 'strict-transport-security': 'max-age=63072000', 'x-frame-options': 'DENY' } });
 });
+
+test('a probe-exfil approval is a destination entry for that method and path, never receives on an origin-wide entry', () => {
+  const APP = `${SITE}/js/app.js`;
+  const login = `${SITE}/api/login`;
+  const hit = (kind) => ({ kind, encoding: 'raw', url: login, frame: 'top', initiator: null });
+  const probeVisit = (role) => visit({ role, scripts: [ext(APP)], destinations: [{ url: login, method: 'POST', type: 'Fetch', frame: 'top', initiator: scriptRef(APP), phase: 'probe' }], probe: { values: { email: 'a@b.example', password: 'pw-123456' }, submitted: true, hits: [hit('email'), hit('password')], growth: [], storage: [] } });
+  const snap = snapshot([{ path: '/login', sensitive: true, visits: [visit({ role: 'A', scripts: [ext(APP)] }), visit({ role: 'B', scripts: [ext(APP)] }), probeVisit('probe'), probeVisit('probe2')] }]);
+  const appr = approved({ scripts: [entry({ id: 'app', match: APP, trust: 'deploy', pages: ['**', '/login'], behavior: { hosts: [], listens: [], input: true, eval: false, obfuscation: 'minified' } })], destinations: [{ match: SITE, pages: ['**', '/login'], reason: 'Our site', approved: '2026-11-01' }] });
+  const ps = propose(snap, appr).filter((p) => p.finding?.startsWith('probe-exfil'));
+  assert.equal(ps.length, 1, 'one proposal per endpoint');
+  assert.deepEqual([ps[0].section, ps[0].mode, ps[0].entry.match, [...ps[0].entry.receives].sort(), ps[0].entry.pages], ['destinations', 'pending', `POST ${login}`, ['email', 'password'], ['/login']]);
+});

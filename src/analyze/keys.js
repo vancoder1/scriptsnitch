@@ -40,6 +40,8 @@ export function createCollector() {
       f.reasons = [...new Set([...f.reasons, ...reasons])];
       f.evidence = [...new Set([...f.evidence, ...evidence])];
       f.attributedTo ??= attributedTo;
+      // The value kinds of one probe-exfil finding (several kinds to one endpoint) are merged.
+      if (f.data.kinds && data.kinds) f.data.kinds = [...new Set([...f.data.kinds, ...data.kinds])].sort();
       for (const v of visits) f.visitIds.add(v);
       f.seen = f.visitIds.size;
     },

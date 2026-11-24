@@ -323,8 +323,8 @@ test('a probe value leaked in a link host name is probe-exfil, keyed without the
   assert.deepEqual(keys, [
     findingKey('new-destination', 'https://exfil.evil.example', '*'),
     findingKey('new-destination', 'https://x.evil.example', '*'),
-    findingKey('probe-exfil', 'https://exfil.evil.example card', '*'),
-    findingKey('probe-exfil', 'https://x.evil.example password', '*'),
+    findingKey('probe-exfil', 'link https://exfil.evil.example', '*'),
+    findingKey('probe-exfil', 'link https://x.evil.example', '*'),
   ].sort());
   assert.ok(r.findings.every((f) => f.severity === 'high'));
 });

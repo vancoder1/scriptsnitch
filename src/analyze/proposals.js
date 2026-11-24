@@ -86,7 +86,11 @@ function proposalFor(f, section, today) {
     case 'obfuscation': return add('scripts', d.entryId, { obfuscation: d.band });
     case 'hostname': return add('scripts', d.entryId, { hosts: [d.host] });
     case 'new-destination': return entry('destinations', { match: d.destination, pages: pagesFor(f) });
-    case 'probe-exfil': return d.approvable ? add('destinations', d.entry ?? d.destination, { receives: d.kinds ?? [d.kind] }) : null;
+    case 'probe-exfil': {
+      if (!d.approvable) return null;
+      const existing = section.destinations.find((e) => e.match === d.endpoint);
+      return existing ? add('destinations', existing.match, { receives: d.kinds }) : entry('destinations', { match: d.endpoint, receives: d.kinds, pages: pagesFor(f) });
+    }
     case 'new-field': {
       const { frame, form, field, kind, count } = d.field;
       const existing = section.fields.find((e) => entryKey('fields', e) === entryKey('fields', d.field));

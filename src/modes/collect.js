@@ -15,6 +15,7 @@ import { ownOrigins } from '../analyze/hosts.js';
 import { classifyUrl, findVolatileParams, maskParams } from '../analyze/urls.js';
 import { coveringScripts, coveringDestinations, exactlyApproved, approvedOwnEntries, originOf } from '../analyze/approval.js';
 import { matchUrl } from '../config/patterns.js';
+import { probeValues, growthFields } from '../analyze/probe-match.js';
 import { sha256Hex } from '../util/hash.js';
 import { validateSnapshot, SNAPSHOT_FORMAT } from '../snapshot.js';
 import { VERSION } from '../version.js';
@@ -55,9 +56,12 @@ function maskVisit(visit, volatile) {
   visit.inputCode = visit.inputCode.map((r) => remapRef(r, volatile));
 }
 
+// The second probe types values this much longer, so a payload that grows with the input stands out.
+const LENGTH_BOOST = 37;
+
 const scriptKey = (s) => s.ref.url ?? s.ref.template ?? `code:${s.creator?.url ?? s.creator?.template ?? 'unknown'}`;
 
-export async function collect({ config, approved, outDir, executable, allowNoSandbox = false, drill = false, env = process.env, now = Date.now, extraArgs = [], random = Math.random, fetchImpl = fetch, onBrowser = () => {}, extras = {} }) {
+export async function collect({ config, approved, outDir, executable, allowNoSandbox = false, drill = false, env = process.env, now = Date.now, extraArgs = [], random = Math.random, fetchImpl = fetch, onBrowser = () => {} }) {
   mkdirSync(outDir, { recursive: true });
   const startedAt = new Date(now()).toISOString();
   let browser = await openBrowser({ executable, allowNoSandbox, extraArgs });
@@ -130,7 +134,23 @@ export async function collect({ config, approved, outDir, executable, allowNoSan
       visits.push(confirm);
     }
 
-    if (extras.afterVisits) visits.push(...(await extras.afterVisits({ page, profile, safeVisit, options, judgeVisit, volatile, maskVisit })));
+    // Probe visits: once per profile on pages with a sensitive field, plus a second desktop probe with
+    // much longer values on sensitive pages, for the growth test.
+    if (page.probe === true || (page.probe === 'auto' && pair.some((v) => v.fields.length > 0))) {
+      const probeRun = async (role, values) => {
+        const v = judgeVisit(await safeVisit(page, profile, { ...options(role), mode: 'probe', values }));
+        maskVisit(v, volatile);
+        return v;
+      };
+      const first = await probeRun('probe', probeValues(random, { now: now() }));
+      visits.push(first);
+      if (page.sensitive && profile === 'desktop') {
+        const second = await probeRun('probe2', probeValues(random, { lengthBoost: LENGTH_BOOST, now: now() }));
+        if (first.probe && second.probe) second.probe.growth = growthFields(first.held ?? [], second.held ?? [], LENGTH_BOOST);
+        visits.push(second);
+      }
+    }
+
 
     for (const v of visits.filter((x) => x.conclusive)) {
       for (const s of v.scripts) {

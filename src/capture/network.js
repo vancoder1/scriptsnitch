@@ -9,12 +9,13 @@ export function createNetLog(ctx) {
   const frames = [];
   const transports = [];
   let lastActivity = Date.now();
+  let phase = 'load';
   const touch = () => { lastActivity = Date.now(); };
 
   ctx.on('Network.requestWillBeSent', (p, sessionId) => {
     touch();
     const existing = requests.get(p.requestId);
-    const entry = existing ?? { sessionId, startedAt: Date.now(), done: false };
+    const entry = existing ?? { sessionId, startedAt: Date.now(), done: false, phase };
     Object.assign(entry, {
       requestId: p.requestId,
       url: p.request.url,
@@ -47,14 +48,14 @@ export function createNetLog(ctx) {
   });
   ctx.on('Network.webSocketCreated', (p, sessionId) => {
     touch();
-    sockets.set(p.requestId, { url: p.url, initiator: p.initiator ?? null, sessionId });
+    sockets.set(p.requestId, { url: p.url, initiator: p.initiator ?? null, sessionId, phase });
   });
   ctx.on('Network.webSocketFrameSent', (p) => {
     frames.push({ requestId: p.requestId, payload: p.response?.payloadData ?? '' });
   });
   ctx.on('Network.webTransportCreated', (p, sessionId) => {
     touch();
-    transports.push({ url: p.url, initiator: p.initiator ?? null, sessionId });
+    transports.push({ url: p.url, initiator: p.initiator ?? null, sessionId, phase });
   });
 
   return {
@@ -63,6 +64,7 @@ export function createNetLog(ctx) {
     frames,
     transports,
     lastActivity: () => lastActivity,
+    setPhase(p) { phase = p; },
     reset() { requests.clear(); sockets.clear(); frames.length = 0; transports.length = 0; touch(); },
     // Requests still open, ignoring streams and anything open longer than longPollMs.
     inFlight(longPollMs) {

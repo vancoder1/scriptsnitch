@@ -39,6 +39,11 @@ export function kindOf(node, extra = new Map()) {
   return null;
 }
 
+function formNodeOf(nodeId, parents) {
+  for (let p = parents.get(nodeId); p; p = parents.get(p.nodeId)) if (p.localName === 'form') return p;
+  return null;
+}
+
 function formSignature(nodeId, parents, docUrl) {
   for (let p = parents.get(nodeId); p; p = parents.get(p.nodeId)) {
     if (p.localName !== 'form') continue;
@@ -122,7 +127,7 @@ export async function readDom(ctx, { own, framesMode = 'own', extraSelectors = {
         continue;
       }
       const a = attrs(node);
-      const field = { nodeId: node.nodeId, sessionId: session.id, frame: session === page ? frameLabel : sessionOrigin, form: formSignature(node.nodeId, tree.parents, docUrl), field: a.name || a.id || (a.autocomplete ?? '').split(/\s+/)[0] || a.type || 'input', kind };
+      const field = { nodeId: node.nodeId, sessionId: session.id, frame: session === page ? frameLabel : sessionOrigin, form: formSignature(node.nodeId, tree.parents, docUrl), field: a.name || a.id || (a.autocomplete ?? '').split(/\s+/)[0] || a.type || 'input', kind, formNodeId: formNodeOf(node.nodeId, tree.parents)?.nodeId ?? null, attrs: a };
       fieldNodes.push(field);
       if (!SENSITIVE_KINDS.has(kind)) continue;
       sensitiveHere.push(field);

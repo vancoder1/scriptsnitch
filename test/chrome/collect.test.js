@@ -87,3 +87,22 @@ test('relaunches Chrome once after it crashes and finishes the run', async (t) =
   assert.equal(launches, 2);
   assert.equal(snap.pages.every((p) => p.profiles.desktop.conclusive), true);
 });
+
+test('probes sensitive pages, twice on desktop, and catches an encrypted payload by its growth', async (t) => {
+  if (!executable) return t.skip('no Chrome');
+  await site.setScenario('encrypted-exfil');
+  const snap = await run(config([{ name: 'Sign in', url: `${site.origin('shop.test')}/login`, sensitive: true }], { profiles: ['desktop'] }));
+  const visits = snap.pages[0].profiles.desktop.visits;
+  assert.deepEqual(visits.map((v) => v.role), ['A', 'B', 'probe', 'probe2']);
+  const probe2 = visits.find((v) => v.role === 'probe2');
+  assert.deepEqual(probe2.probe.growth, [{ url: `${site.origin('evil.test')}/e`, field: 'd' }]);
+  assert.deepEqual(probe2.probe.hits, [], 'the encrypted payload holds no probe value');
+});
+
+test('probes a page with a password field once per profile when it is not sensitive', async (t) => {
+  if (!executable) return t.skip('no Chrome');
+  await site.setScenario('probe-form');
+  const snap = await run(config([{ name: 'Sign in', url: `${site.origin('shop.test')}/login` }]));
+  assert.deepEqual(snap.pages[0].profiles.desktop.visits.map((v) => v.role), ['A', 'B', 'probe']);
+  assert.deepEqual(snap.pages[0].profiles.mobile.visits.map((v) => v.role), ['A', 'B', 'probe']);
+});

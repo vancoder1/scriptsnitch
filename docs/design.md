@@ -211,7 +211,8 @@ quick start uses the two-job split.
 `C:\Program Files\Google\Chrome\Application\chrome.exe`, the macOS app bundle, plus Chromium paths).
 Flags: `--headless --remote-debugging-pipe --user-data-dir=<temp> --no-first-run
 --no-default-browser-check --disable-background-networking --disable-component-update
---disable-sync --disable-extensions --mute-audio`, with fds 3 and 4 opened as pipes. Chrome gets an
+--disable-sync --disable-extensions --disable-component-extensions-with-background-pages
+--disable-blink-features=AutomationControlled --mute-audio`, with fds 3 and 4 opened as pipes. Chrome gets an
 allowlisted environment (`PATH`, `HOME`, the temp-directory variables, `LANG`, and on Windows
 `SystemRoot`), never the action's own, so no input, token (`INPUT_GITHUB-TOKEN`,
 `ACTIONS_RUNTIME_TOKEN`, `ACTIONS_ID_TOKEN_REQUEST_*`) or secret reaches the browser process. No
@@ -256,8 +257,9 @@ X-Content-Type-Options, Referrer-Policy, Permissions-Policy and Cross-Origin-Ope
 
 **Profiles.** `desktop` and `mobile`, both by default (polyfill.io's payload ran only on phones). Each
 run picks a viewport from a short list of common sizes for each profile, so the check does not always
-look the same. Desktop uses the Chrome user agent with "HeadlessChrome" replaced and matching client
-hints. Mobile uses an Android Chrome user agent, client hints, `navigator.platform` (set through
+look the same. Desktop uses the Chrome user agent of the host's operating system with
+"HeadlessChrome" replaced, and matching client hints (always set: without them the brand list is
+empty). Mobile uses an Android Chrome user agent, client hints, `navigator.platform` (set through
 `setUserAgentOverride`), touch emulation and `maxTouchPoints` that agree with each other.
 
 **Settling.** After the load event, wait until there are no requests in flight for 1 s and no new
@@ -310,7 +312,7 @@ true})` runs from the first keystroke until after submit, and the coverage says 
 actually ran while the fields were being filled. Code without a URL that ran is attributed to its
 creator (section 8). The page cannot observe this either.
 
-**Peer connections.** Live `RTCPeerConnection` and `RTCDataChannel` objects are counted with
+**Peer connections.** Live `RTCPeerConnection` objects are counted with
 `Runtime.queryObjects` after settling and several times during the probe's wait (a closed, collected
 connection would otherwise be missed). The prototypes are captured before any page script runs, so a
 page cannot swap in a decoy. They have no owning script. Best effort; section 19 says so.
@@ -628,7 +630,7 @@ it: High findings are always **pending**, Medium findings are **routine**.
 | `new-field` | A sensitive field signature not approved in `fields`, or more of one than its `count` | High |
 | `frame-field` | A sensitive field kind inside an iframe not approved for that kind | High |
 | `new-frame` | An iframe origin not approved for the page, with no sensitive fields | Medium |
-| `peer-connection` | Live `RTCPeerConnection`/`RTCDataChannel` objects on a page without an `allow` entry | High |
+| `peer-connection` | Live `RTCPeerConnection` objects on a page without an `allow` entry | High |
 | `eval` | Runtime code creation (WebAssembly included) by a script whose behaviour does not approve it | Medium |
 | `obfuscation` | An obfuscation score above the script's approved band (section 10, "scores") | Medium |
 | `hostname` | A new hostname in a script's code (section 10, "scores") | Medium on sensitive pages (for own scripts only when no deploy is evident), Info elsewhere |
@@ -741,11 +743,11 @@ card number digits-only and spaced. Then:
   payloads);
 - a card, security-code or password value found in browser storage.
 
-**Real effects.** HTTP is held, so forms never reach the server. A WebSocket opened before the hold
-can still carry the fake values out: harmless for detection (it is evidence), but a site that submits
-forms over a WebSocket (Phoenix LiveView, Blazor Server, Meteor) would really receive them. Unless
-network-offline emulation is shown to stop WebSocket sends (section 20), the probe types but does not
-submit on a page with an open WebSocket to an own origin, and the status issue says so.
+**Real effects.** HTTP is held by `Fetch`, and the probe also turns on network-offline emulation,
+which stops WebSocket frames, even on a socket opened before the hold, while Chrome still reports
+their payloads (section 20, result 8). So forms never reach the server, including sites that submit
+forms over a WebSocket (Phoenix LiveView, Blazor Server, Meteor), and the fake values are still
+searched for in every frame the page tried to send.
 
 ## 12. Reporting
 
@@ -1135,6 +1137,38 @@ Short throwaway experiments before the real build, because each one can change a
     it).
 11. Real-world timings and the cost of the `Debugger` domain on large bundles, to set the settle and
     timeout defaults and the concurrency.
+
+**Results (2026-11-24, Chrome 157/158, local Windows and GitHub's runners):**
+1. Confirmed on `ubuntu-24.04` (`/usr/bin/google-chrome`), `windows-2025`
+   (`C:\Program Files\Google\Chrome\Application\chrome.exe`) and `macos-15` (the app bundle). On
+   Windows, `PATH`, `TMP`, `TEMP` and `SystemRoot` are enough.
+2. Confirmed: the sandbox works on `ubuntu-24.04` without `--no-sandbox`. macOS prints harmless
+   "sandbox" XPC lines, so only Chrome's "No usable sandbox" message counts as a sandbox failure.
+3. The default user agent says "HeadlessChrome" and `navigator.webdriver` is `true`.
+   `--disable-blink-features=AutomationControlled` makes it `false`, and the desktop override must
+   also set client hints (without them the brand list is empty, itself a tell). The mobile override is
+   consistent across user agent, platform, client hints and touch points.
+4. Browser-level auto-attach also attaches Chrome's own targets (its UI, the new-tab page, built-in
+   extensions' service workers), some inside the visit's context. Only targets in the visit's browser
+   context with an `http`, `https`, `blob`, `data` or `about` URL are kept; others are released and
+   detached. `--disable-component-extensions-with-background-pages` removes most of them. Each kept
+   page or frame session sets auto-attach again to reach out-of-process iframes and workers.
+5. `eval` code has a stack trace whose frames carry the creator's script id; an appended external
+   script has none, but its `Network` initiator stack does. A `blob:` worker attaches as its own
+   target with no creator, so its behaviour is attributed to "unknown creator".
+6. Listeners are readable in out-of-process iframes once `DOM.enable` is called there; window
+   listeners through an evaluated `window` reference. Ancestors come from the `DOM.getDocument` tree
+   (`describeNode` gives no parent).
+7. Confirmed: precise coverage during typing names the skimmer behind a delegated handler.
+8. Confirmed: `Fetch` holds fetch, XHR, beacons, pixels and form navigations, and the server receives
+   nothing. Network-offline emulation stops WebSocket frames on an open socket (and new sockets
+   fail) while `webSocketFrameSent` still reports their payloads, so the probe always submits.
+9. `Runtime.queryObjects` works without `Runtime.enable` and counts `RTCPeerConnection` objects;
+   counts of `RTCDataChannel` objects are unreliable (they are collected first), so only peer
+   connections count.
+10. Confirmed: a 5 MB body is read back with raised buffer sizes.
+11. A page with a 5 MB script, an iframe and a worker loads and is read in about 5 s; the timing
+    defaults stand.
 
 ## 21. Order of work
 

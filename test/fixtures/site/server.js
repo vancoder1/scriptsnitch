@@ -80,4 +80,4 @@ export async function startDemoSite({ tld = 'test', port: wanted = 0 } = {}) {
   };
 }
 
-export const DEMO_HOSTS = ['shop.test', 'cdn.test', 'pay.test', 'evil.test', 'tags.test'];
+export const DEMO_HOSTS = ['shop.test', 'cdn.test', 'pay.test', 'evil.test', 'tags.test', 'www.googletagmanager.com'];

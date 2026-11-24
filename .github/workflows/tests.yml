@@ -29,4 +29,24 @@ jobs:
         with:
           node-version: 24
 
-      - run: npm test
+      - run: npm run test:unit
+
+      - run: npm run test:chrome
+
+  # Every documented attack and false-alarm scenario, through check against the demo site. Slow (two
+  # probes with an 8-second wait per check on the sign-in page), so it runs beside the job above.
+  scenarios:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    env:
+      SCRIPTSNITCH_REQUIRE_CHROME: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+
+      - run: npm run test:scenarios

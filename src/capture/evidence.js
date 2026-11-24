@@ -2,10 +2,11 @@
 // later removes them (design §7 "Evidence"): up to 2 MB each and 100 MB in total, once per identity.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { redactText } from '../util/redact.js';
 
 const MB = 1024 * 1024;
 
-export function createEvidenceStore(outDir, { perScript = 2 * MB, total = 100 * MB } = {}) {
+export function createEvidenceStore(outDir, { perScript = 2 * MB, total = 100 * MB, secrets = [] } = {}) {
   const entries = new Map();
   let used = 0;
   mkdirSync(join(outDir, 'evidence'), { recursive: true });
@@ -13,7 +14,7 @@ export function createEvidenceStore(outDir, { perScript = 2 * MB, total = 100 * 
     entries,
     add(hash, source, url) {
       if (entries.has(hash)) return entries.get(hash);
-      const bytes = Buffer.from(source, 'utf8').subarray(0, perScript);
+      const bytes = Buffer.from(secrets.length ? redactText(source, secrets) : source, 'utf8').subarray(0, perScript);
       if (used + bytes.length > total) return null;
       const file = `evidence/${hash}.js`;
       writeFileSync(join(outDir, file), bytes);

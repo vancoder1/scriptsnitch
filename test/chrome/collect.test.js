@@ -125,3 +125,15 @@ test('marks a hashed own file the build entry names as referenced', async (t) =>
   assert.equal(scripts.find((s) => s.ref.url?.endsWith('/chunk-Dq9Wn3Lp.js')).referenced, true);
   assert.equal(scripts.find((s) => s.ref.url?.endsWith('/index-B7kQ0aRz.js')).referenced, false);
 });
+
+test('step secrets are redacted from the snapshot by value', async (t) => {
+  if (!executable) return t.skip('no Chrome');
+  await site.setScenario('secret-echo');
+  const origin = site.origin('shop.test');
+  const cfg = config([{ name: 'Home', url: `${origin}/`, steps: [{ goto: `${origin}/login` }, { type: '#user', secret: 'SHOP_USER' }, { click: '#go' }] }], { profiles: ['desktop'] });
+  const outDir = mkdtempSync(join(tmpdir(), 'ss-out-'));
+  await collect({ config: cfg, approved: emptyApproved(), outDir, executable, extraArgs: demoChromeArgs(site.port), env: { ...process.env, SHOP_USER: 'demo-user-123' } });
+  const text = readFileSync(join(outDir, 'snapshot.json'), 'utf8');
+  assert.ok(text.includes('/api/me?u=[redacted]') || text.includes('/api/me?u=%5Bredacted%5D'), 'the request URL is in the snapshot, redacted');
+  assert.ok(!text.includes('demo-user-123'));
+});

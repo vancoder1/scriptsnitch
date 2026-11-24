@@ -7,6 +7,7 @@ import { openBrowser } from '../capture/browser.js';
 import { visitPage, newCache } from '../capture/visit.js';
 import { inconclusiveReason } from '../capture/inconclusive.js';
 import { createEvidenceStore } from '../capture/evidence.js';
+import { secretValues, redactDeep } from '../util/redact.js';
 import { crossCheck } from '../capture/crosscheck.js';
 import { navigate, querySelector } from '../capture/steps.js';
 import { ChromeExitedError } from '../chrome/cdp.js';
@@ -69,7 +70,8 @@ export async function collect({ config, approved, outDir, executable, allowNoSan
   let relaunch = null;
   let relaunches = 0;
   const cache = newCache();
-  const evidence = createEvidenceStore(outDir);
+  const secrets = secretValues(config, env);
+  const evidence = createEvidenceStore(outDir, { secrets });
   const crossItems = new Map();
 
   // A visit that survives one Chrome crash per run: the first crash relaunches Chrome and retries.
@@ -225,7 +227,7 @@ export async function collect({ config, approved, outDir, executable, allowNoSan
       crossCheck: checks.filter((c) => /^[0-9a-f]{64}$/.test(c.chromeHash ?? '')),
       evidence: Object.fromEntries(evidence.entries),
     };
-    const valid = validateSnapshot(JSON.parse(JSON.stringify(snapshot)));
+    const valid = validateSnapshot(redactDeep(JSON.parse(JSON.stringify(snapshot)), secrets));
     writeFileSync(join(outDir, 'snapshot.json'), JSON.stringify(valid));
     return valid;
   } finally {

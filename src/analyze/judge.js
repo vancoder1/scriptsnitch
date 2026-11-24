@@ -1,9 +1,9 @@
 // The report job's judgment (design §10): turns a snapshot's observations into findings, using the
 // approved file and the cross-run state. Pure: returns the findings and the updated state.
-import { siteSection, seenKeyOf } from '../config/approved.js';
+import { siteSection, seenKeyOf, emptyApproved } from '../config/approved.js';
 import { coversPage } from '../config/patterns.js';
 import { ownOrigins } from './hosts.js';
-import { siteState } from '../state.js';
+import { siteState, emptyStatusState } from '../state.js';
 import { entrySlotsOf, deployEvident } from './deploy.js';
 import { judgeScripts } from './judge-scripts.js';
 import { judgeBehaviour } from './judge-behaviour.js';
@@ -18,6 +18,35 @@ const BEHAVIOUR_SIGNS = new Set(['new-destination', 'listener', 'input-code', 'p
 const DRILL_EXPECTED = ['new-origin', 'listener', 'probe-exfil'];
 const NEW_SCRIPT_KINDS = new Set(['new-origin', 'new-slot', 'new-own-script', 'new-inline', 'new-version']);
 const WINDOW = 7;
+
+// How a finding can be recognised in a later run's observations, whatever is approved by then: a
+// finding no longer raised but still observed was approved (or accepted) and is resolved; one no
+// longer observed has vanished, and a vanished High stays listed (attackers remove skimmers).
+export function observedAs(f) {
+  const d = f.data ?? {};
+  switch (f.kind) {
+    case 'new-origin': case 'new-slot': case 'new-own-script': case 'new-version': case 'build-file': case 'in-place-change': case 'own-change':
+      return d.url ? [...new Set(d.hashes ?? [d.hash])].filter(Boolean).map((h) => `content:${d.url}|${h}`) : [];
+    case 'content-mismatch': case 'cloaking': return d.url ? f.evidence.map((h) => `content:${d.url}|${h}`) : [];
+    case 'new-inline': case 'new-destination': case 'probe-exfil': case 'new-field': case 'frame-field': case 'new-frame': return [`subject:${f.subject}`];
+    case 'listener': return [`listener:${scriptIdentity(d.script)}|${d.listener}`];
+    case 'input-code': return [`input:${scriptIdentity(d.script)}`];
+    case 'peer-connection': return [`peer:${f.page}`];
+    case 'headers-weaker': case 'csp-source': return [`headers:${f.page}|${f.subject}`];
+    default: return [];
+  }
+}
+
+// Everything this snapshot observed, in observedAs terms: the snapshot judged with nothing approved.
+export function observedIndex(snapshot, now = Date.now()) {
+  const r = judge({ snapshot, approved: emptyApproved(), state: emptyStatusState(), now });
+  const index = new Set();
+  for (const f of [...r.findings, ...r.held, ...r.info]) for (const x of f.observedAs) index.add(x);
+  for (const p of snapshot.pages) {
+    if (Object.values(p.profiles).some((x) => x?.conclusive)) for (const h of TRACKED_HEADERS) index.add(`headers:${p.path}|${h}`);
+  }
+  return index;
+}
 
 // §10 "Combination": a script with two or more findings, one of them a behaviour sign, has all of
 // them raised to High. Info entries are notes, not findings, and do not count.
@@ -190,12 +219,13 @@ export function judge({ snapshot, approved, state, now = Date.now() }) {
   const sensitive = new Set(snapshot.pages.filter((p) => p.sensitive).map((p) => `${p.site}${p.path}`));
   for (const f of all) {
     f.firstRun = firstRunSites.has(f.site);
+    f.observedAs = observedAs(f);
     f.sensitivePages = f.seenOn.filter((p) => sensitive.has(`${f.site}${p}`));
     const o = NEW_SCRIPT_KINDS.has(f.kind) ? observed.get(`${f.site} ${scriptIdentity(f.attributedTo)}`) : null;
     if (o) f.data.behavior = { hosts: [...o.hosts].sort(), listens: [...o.listens].sort(), input: o.input, eval: o.eval, obfuscation: o.obfuscation };
   }
   const { reportable, pendingSightings } = confirm(all, status, run);
-  const drillFindings = combine(drillCollector.all()).filter((f) => f.severity !== 'info');
+  const drillFindings = combine(drillCollector.all()).filter((f) => f.severity !== 'info').map((f) => ({ ...f, observedAs: [] }));
   return {
     findings: reportable,
     held: pendingSightings,

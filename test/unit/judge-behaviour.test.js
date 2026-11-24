@@ -300,3 +300,17 @@ test('state stays bounded: hashes, templates and entry slots of files no longer 
   assert.deepEqual(Object.keys(pruned.entrySlots), [`${SITE}/assets/index-{token}.js`]);
   assert.deepEqual(pruned.inline['/'], ['a'.repeat(12)]);
 });
+
+test('findings say how to recognise them later, and observedIndex lists everything observed', async () => {
+  const { observedIndex } = await import('../../src/analyze/judge.js');
+  const evil = 'https://evil.example/x.js';
+  const s = withProbe('/checkout', [ext(APP), ext(evil, { hash: H('bad') })], { destinations: [dest('https://c2.example/c', { phase: 'probe', by: evil })], listeners: [lis('card', 'field', 'keydown', evil)] }, { sensitive: true });
+  const r = run(s, approved({ scripts: [appEntry()] }));
+  const byKind = Object.fromEntries(r.findings.map((f) => [f.kind, f.observedAs]));
+  assert.deepEqual(byKind['new-origin'], [`content:${evil}|${H('bad')}`]);
+  assert.deepEqual(byKind['new-destination'], ['subject:https://c2.example']);
+  assert.deepEqual(byKind.listener, [`listener:${evil}|card:field:keydown`]);
+  const index = observedIndex(s, Date.UTC(2026, 10, 24));
+  for (const f of r.findings) assert.ok(f.observedAs.every((x) => index.has(x)), f.kind);
+  assert.ok(index.has('headers:/checkout|strict-transport-security'));
+});

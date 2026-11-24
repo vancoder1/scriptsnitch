@@ -11,6 +11,9 @@ import { check } from './modes/check.js';
 import { validateMode } from './modes/validate.js';
 import { approveMode } from './modes/approve.js';
 import { scan, init, formatInventory, InitError } from './modes/scan.js';
+import { report } from './modes/report.js';
+import { createGitHub } from './report/github.js';
+import { readStatus } from './report/status-issue.js';
 import { formatSummary } from './report/summary.js';
 import { VERSION } from './version.js';
 
@@ -19,8 +22,12 @@ export const USAGE = `Usage: scriptsnitch <command> [options]
 Commands:
   scan <url> [--probe] [--json]   One-off inventory of one page, no setup needed
   init <url...> [--force]         Write a starter config and a first approved file
-  check                           Collect and judge now; exit 1 on unapproved findings
+  check [--github owner/repo]     Collect and judge now; exit 1 on unapproved findings. With
+                                  --github, reads the status issue's state (read-only)
   collect [--drill]               Collect a snapshot into the out directory
+  report --github owner/repo [--dry-run] [--fail-on high|medium] [--propose pr|issue]
+                                  Judge the out directory's snapshot and update the issues and
+                                  approval pull requests (needs GITHUB_TOKEN)
   validate                        Check the config and the approved file
   approve --id <key> [--reason <text>] | --all | --headers
                                   Edit the approved file: move one pending item, add every
@@ -36,8 +43,9 @@ Options:
 Exit codes: 0 nothing unapproved, 1 High or Medium findings, 2 some page inconclusive, 3 error.
 `;
 
-const VALUE_FLAGS = new Set(['config', 'out', 'chrome', 'id', 'reason']);
-const BOOL_FLAGS = new Set(['probe', 'json', 'all', 'headers', 'force', 'drill', 'allow-no-sandbox', 'help', 'version']);
+const VALUE_FLAGS = new Set(['config', 'out', 'chrome', 'id', 'reason', 'github', 'fail-on', 'propose']);
+const BOOL_FLAGS = new Set(['probe', 'json', 'all', 'headers', 'force', 'drill', 'allow-no-sandbox', 'help', 'version', 'dry-run']);
+const CHOICES = { 'fail-on': ['never', 'medium', 'high'], propose: ['pr', 'issue'] };
 
 class UsageError extends Error {}
 
@@ -55,12 +63,16 @@ function parseArgs(argv) {
     } else if (BOOL_FLAGS.has(name)) flags[name] = true;
     else throw new UsageError(`unknown option --${name}`);
   }
+  for (const [name, allowed] of Object.entries(CHOICES)) {
+    if (flags[name] !== undefined && !allowed.includes(flags[name])) throw new UsageError(`--${name} must be ${allowed.join(', ')}`);
+  }
+  if (flags.github !== undefined && !/^[\w.-]+\/[\w.-]+$/.test(flags.github)) throw new UsageError('--github takes owner/repo');
   return { command: positional[0], args: positional.slice(1), flags };
 }
 
 const EXPECTED = [ConfigError, ApprovedError, UnknownPendingError, ChromeNotFoundError, SandboxError, InitError, UsageError];
 
-export async function runCli(argv, { stdout = process.stdout, stderr = process.stderr, env = process.env, cwd = process.cwd(), extraArgs = [] } = {}) {
+export async function runCli(argv, { stdout = process.stdout, stderr = process.stderr, env = process.env, cwd = process.cwd(), extraArgs = [], githubFactory = createGitHub } = {}) {
   const print = (s) => stdout.write(s.endsWith('\n') ? s : `${s}\n`);
   try {
     const { command, args, flags } = parseArgs(argv);
@@ -69,6 +81,12 @@ export async function runCli(argv, { stdout = process.stdout, stderr = process.s
     const configPath = resolve(cwd, flags.config ?? 'scriptsnitch/config.json');
     const outDir = resolve(cwd, flags.out ?? 'scriptsnitch-out');
     const browserOptions = () => ({ executable: findChrome({ chromePath: flags.chrome }), allowNoSandbox: Boolean(flags['allow-no-sandbox']), extraArgs, env });
+    const github = () => {
+      const repo = flags.github ?? env.GITHUB_REPOSITORY;
+      const token = env.GITHUB_TOKEN ?? env.GH_TOKEN;
+      if (!repo || !token) throw new UsageError(`${command} needs --github owner/repo (or GITHUB_REPOSITORY) and a token in GITHUB_TOKEN`);
+      return { client: githubFactory({ token, repo }), repo };
+    };
     const loaded = () => {
       const config = loadConfig(configPath);
       const approvedPath = resolve(cwd, config.approved);
@@ -91,7 +109,8 @@ export async function runCli(argv, { stdout = process.stdout, stderr = process.s
       }
       case 'check': {
         const { config, approved } = loaded();
-        const r = await check({ config, approved, outDir, ...browserOptions() });
+        const state = flags.github ? (await readStatus(github().client)).state : undefined;
+        const r = await check({ config, approved, outDir, ...browserOptions(), ...(state ? { state } : {}) });
         print(formatSummary(r.report));
         return r.exitCode;
       }
@@ -100,6 +119,16 @@ export async function runCli(argv, { stdout = process.stdout, stderr = process.s
         await collect({ config, approved, outDir, drill: Boolean(flags.drill), ...browserOptions() });
         print(`Wrote ${join(outDir, 'snapshot.json')}`);
         return 0;
+      }
+      case 'report': {
+        const { client, repo } = github();
+        const { config, approved } = loaded();
+        const r = await report({
+          snapshotPath: join(outDir, 'snapshot.json'), outDir, config, approved, approvedPath: config.approved.replace(/\\/g, '/'), github: client,
+          dryRun: Boolean(flags['dry-run']), propose: flags.propose ?? 'pr', failOn: flags['fail-on'] ?? 'never', repoUrl: `https://github.com/${repo}`, summaryPath: env.GITHUB_STEP_SUMMARY,
+        });
+        print(`scriptsnitch: ${r.high} High and ${r.medium} Medium open, ${r.inconclusive} inconclusive${flags['dry-run'] ? ' (dry run: nothing was changed on GitHub)' : ''}`);
+        return r.exitCode;
       }
       case 'validate': {
         const r = validateMode({ configPath, cwd });

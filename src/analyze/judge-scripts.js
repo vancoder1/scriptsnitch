@@ -124,7 +124,7 @@ function judgeExternal(ctx, page, profile, url, observations, visits) {
   if (!isOwn && cls.kind === 'versioned') {
     const sameSlot = section.scripts.find((e) => e.trust === 'exact' && e.match !== 'inline' && e.match !== url && !/[*{]/.test(e.match) && slotOf(e.match, classifyUrl(e.match)) === slot);
     if (sameSlot) {
-      ctx.add({ ...base, kind: 'new-version', subject: url, severity: 'medium', reasons: [`upgraded from ${classifyUrl(sameSlot.match).version} to ${cls.version}`], evidence: [obs.ref.contentHash], data: { ...data, entryId: sameSlot.id } });
+      ctx.add({ ...base, kind: 'new-version', subject: url, severity: 'medium', reasons: [`upgraded from ${classifyUrl(sameSlot.match).version} to ${cls.version}`], evidence: [obs.ref.contentHash], data: { ...data, entryId: sameSlot.id, previousUrl: sameSlot.match } });
       return;
     }
   }

@@ -36,7 +36,7 @@ const row = (key, e, today, links) => {
 const table = (entries, today, links) => ['| Severity | Finding | Where | Why | To approve |', '| --- | --- | --- | --- | --- |', ...entries.map(([k, e]) => row(k, e, today, links))].join('\n');
 const order = ([, a], [, b]) => Number(b.severity === 'high') - Number(a.severity === 'high') || a.first.localeCompare(b.first);
 
-function render({ site, active, muted, today, links, diffs, firstRun, notify, withDiffs = true }) {
+function render({ site, active, muted, today, links, diffs, firstRun, notify, edits, withDiffs = true }) {
   const lines = [];
   if (firstRun) lines.push('> Nothing is approved for this site yet. Everything below was seen on its first run: this inventory is only as clean as the site is today. Review it in the approval pull request before merging.', '');
   if (active.length) {
@@ -51,12 +51,13 @@ function render({ site, active, muted, today, links, diffs, firstRun, notify, wi
   } else {
     lines.push(`Nothing unapproved is live on ${md(site)}. Last checked ${today}${links.runUrl ? ` ([run](${links.runUrl}))` : ''}.`, '');
   }
+  if (edits && active.length) lines.push('<details><summary>Proposed edits to the approved file</summary>', '', edits, '', '</details>', '');
   if (muted.length) lines.push(`<details><summary>Muted (${muted.length})</summary>`, '', table(muted, today, links), '', '</details>', '');
   if (notify.length) lines.push(`cc ${notify.map((n) => `@${n}`).join(' ')}`);
   return lines.join('\n').trimEnd();
 }
 
-export async function reconcileSite(github, { site, issue = null, siteState = null, findings, run, now = Date.now(), notify = [], links = {}, diffs = new Map() }) {
+export async function reconcileSite(github, { site, issue = null, siteState = null, findings, run, now = Date.now(), notify = [], links = {}, diffs = new Map(), edits = null }) {
   const today = isoDate(now);
   const prev = siteState ?? emptySiteState(site);
   const st = structuredClone(prev);
@@ -73,10 +74,12 @@ export async function reconcileSite(github, { site, issue = null, siteState = nu
   for (const f of findings) {
     let e = st.findings[f.key];
     if (!e) { e = st.findings[f.key] = { first: today, reported: today, muted: false }; fresh.push(f); }
-    Object.assign(e, { last: today, missed: 0, droppedAt: null, kind: f.kind, severity: f.severity, subject: f.subject, page: f.page, seenOn: f.seenOn ?? [], profiles: f.profiles ?? [], reasons: f.reasons.slice(0, 3) });
+    Object.assign(e, { last: today, missed: 0, droppedAt: null, kind: f.kind, severity: f.severity, subject: f.subject, page: f.page, seenOn: f.seenOn ?? [], profiles: f.profiles ?? [], reasons: f.reasons.slice(0, 3), observedAs: f.observedAs ?? [] });
   }
   for (const [k, e] of Object.entries(st.findings)) {
     if (live.has(k) || e.droppedAt) continue;
+    // Still observed but no longer raised: approved or accepted, so resolved without a word.
+    if (e.observedAs?.some((x) => run.observed?.has(x))) { delete st.findings[k]; continue; }
     const pairs = (e.seenOn.length ? e.seenOn : [e.page]).flatMap((p) => (e.profiles.length ? e.profiles : ['desktop']).map((pr) => `${p}|${pr}`));
     // A finding with no page (a domain finding) is absent only when a check no longer raised it.
     if (!e.seenOn.length || pairs.every((x) => run.conclusive.has(x))) e.missed += 1;
@@ -97,7 +100,7 @@ export async function reconcileSite(github, { site, issue = null, siteState = nu
   else action = issue.state === 'open' ? 'close' : 'keep';
   st.closedByBot = action === 'close' || (action === 'keep' && prev.closedByBot);
 
-  const view = { site, active, muted, today, links, diffs, firstRun: findings.some((f) => f.firstRun), notify };
+  const view = { site, active, muted, today, links, diffs, firstRun: findings.some((f) => f.firstRun), notify, edits };
   let text = render(view);
   if (text.length > BODY_LIMIT) text = render({ ...view, withDiffs: false });
   let body = writeMarker(text, 'site', st);

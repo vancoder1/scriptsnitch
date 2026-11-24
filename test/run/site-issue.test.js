@@ -137,3 +137,14 @@ test('a finding with no page (a domain finding) counts as missed on every run it
   await step(gh, 2, [], { conclusive: new Set() });
   assert.equal(issuesFor(gh)[0].state, 'closed');
 });
+
+test('a finding still observed but no longer raised was approved and is resolved, even a High', async () => {
+  const gh = createFakeGitHub();
+  const high = { ...H1, observedAs: ['content:https://evil.example/x.js|abc'] };
+  await step(gh, 0, [high]);
+  const sites = await readSites(gh);
+  const { issue, state } = sites.get(SITE);
+  await reconcileSite(gh, { site: SITE, issue, siteState: state, findings: [], run: { conclusive: allConclusive, observed: new Set(['content:https://evil.example/x.js|abc']) }, now: day(1), links: {}, diffs: new Map() });
+  assert.equal(issuesFor(gh)[0].state, 'closed');
+  assert.ok(!issuesFor(gh)[0].body.includes('Not seen since'));
+});

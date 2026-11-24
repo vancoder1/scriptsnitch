@@ -1,0 +1,20 @@
+name: Feature request
+description: Something scriptsnitch should notice, or do differently.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What change on a page should scriptsnitch catch, or what is hard to do today?
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What you suggest
+  - type: textarea
+    id: alarms
+    attributes:
+      label: False alarms
+      description: Which ordinary changes could look like this, and how would scriptsnitch tell them apart?

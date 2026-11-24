@@ -2,7 +2,9 @@
 
 Status: approved 2026-11-23, with the additions in sections 8, 12 and 14 (domain risk, code diffs,
 comment approvals, a reusable workflow, consent banners, stale approvals, `scan`/`init`, fire drills,
-the evidence pack, one-time codes). Author: Ivan Zaporozhets.
+the evidence pack, one-time codes); implemented in v1.0.0. Section 20 records what the experiments
+found, and section 23 the decisions taken during the build that changed what this document says.
+Author: Ivan Zaporozhets.
 
 ## 1. What it is
 
@@ -1110,9 +1112,9 @@ Releases: tag `vX.Y.Z`, GitHub release, move `v1`.
 - It detects; it does not block. A compromised collect job could hide findings.
 - Supporting PCI DSS 6.4.3 and 11.6.1 evidence is not compliance; the assessor decides.
 
-## 20. To verify first
+## 20. Experiments and results
 
-Short throwaway experiments before the real build, because each one can change a design decision:
+Short throwaway experiments before the real build, because each one could change a design decision:
 1. The pipe transport with the preinstalled Chrome on all three runner images, and Chrome's location
    on each.
 2. The sandbox on `ubuntu-24.04` with the packaged Chrome (AppArmor exempts
@@ -1163,6 +1165,10 @@ Short throwaway experiments before the real build, because each one can change a
 8. Confirmed: `Fetch` holds fetch, XHR, beacons, pixels and form navigations, and the server receives
    nothing. Network-offline emulation stops WebSocket frames on an open socket (and new sockets
    fail) while `webSocketFrameSent` still reports their payloads, so the probe always submits.
+   *Later, on Linux CI:* Chrome releases the held frames when the visit's browser context is torn
+   down, and they then reached the server on every run (crashing the page first did not help). A
+   probe visit's context therefore runs through a small local proxy that is cut just before the
+   context is disposed (section 23).
 9. `Runtime.queryObjects` works without `Runtime.enable` and counts `RTCPeerConnection` objects;
    counts of `RTCDataChannel` objects are unreliable (they are collected first), so only peer
    connections count.
@@ -1190,3 +1196,37 @@ Exact thresholds (settle times, obfuscation bands, the second probe's growth tes
 build tokens, related-domain suggestions and sensitive fields (each with tests), the contents and
 refresh mechanism of the lists in `data/`, the snapshot's and the markers' internal shapes, module and
 file names inside `src/`, and issue and pull request wording within the rules above.
+
+## 23. Changes during the build
+
+Decisions taken while building v1.0.0 that change or sharpen what the sections above say. Each was
+made against this document's intent and is covered by tests.
+
+- **Probe isolation (section 11).** A probe visit runs through a local proxy that applies Chrome's own
+  host rules and is cut before the context closes, so held WebSocket frames are written into a dead
+  socket (section 20, result 8). Async call stacks are enabled, so image pixels and timer-delayed
+  requests name the script behind them.
+- **`receives` is per endpoint (sections 9 and 11).** A probe value reaching an endpoint is one finding
+  per method and path, and its approval is a destination entry for that endpoint. Granting `receives`
+  on an origin-wide entry would let a collector planted elsewhere on the site receive passwords.
+- **Approved or gone (section 12).** A finding that is no longer raised but whose subject is still
+  observed (same content hash, endpoint, listener and script) was approved and leaves the issue
+  silently; only a finding whose subject is gone has "vanished", and a vanished High stays listed.
+- **Reported changes stay reported (sections 9 and 10).** A content change at an own file is not
+  adopted as the new baseline until its hash is approved (`sha256` on the entry) or, for an
+  unversioned file, a deploy is evident. `deploy` entries may list approved hashes and templates.
+- **First and stateless runs (section 8).** With no entry-slot history, a file the page loads directly
+  from an approved build folder is accepted; the CLI's stateless `check` therefore cannot tell a new
+  build-folder script tag from the existing bundle.
+- **Volatility (section 8).** A query parameter is per-visit only when its values in the two visits
+  share nothing, and account-key parameters are never masked.
+- **Link hosts (section 10).** A probe value in a `dns-prefetch` or `preconnect` host name is
+  `probe-exfil`, and a hint that appears only during the probe is a High `new-destination`.
+- **State (section 6).** The status marker keeps the date each entry of every section was last seen
+  (for stale approvals), and drops hashes, templates and entry slots of files no longer loaded once
+  every page of a site was conclusive, so it stays bounded. Step secrets are redacted from the snapshot
+  and evidence by value.
+- **Reusable workflow (section 14).** It checks the action out at its own commit
+  (`job.workflow_sha`), so the workflow and the action always match, before and after a release.
+- **Evidence pack (section 12).** Approvals come from comparing whole versions of the approved file in
+  git, so moving an item from `pending` into the live file shows as the approval it is.

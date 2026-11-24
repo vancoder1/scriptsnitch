@@ -1,0 +1,53 @@
+# Real file names from bundlers' default output, one per line. Each must classify as hashed.
+# webpack (contenthash, 20 hex and [contenthash:8])
+https://shop.test/static/js/main.3f2a1c9b.js
+https://shop.test/static/js/main.3f2a1c9b.chunk.js
+https://shop.test/static/js/2.8e5d0a71.chunk.js
+https://shop.test/static/js/runtime-main.c1d2e3f4.js
+https://shop.test/js/app.4f8b2c1d9e0a7b6c5d4e.js
+https://shop.test/js/chunk-vendors.0a1b2c3d.js
+https://shop.test/js/vendors~main.9f8e7d6c.js
+https://shop.test/dist/bundle.e4d909c290d0fb1ca068.js
+https://shop.test/assets/polyfills.5b6a7c8d.js
+https://shop.test/assets/123.3e4f5a6b.js
+# Next.js
+https://shop.test/_next/static/chunks/8069-a1b2c3d4e5f60718.js
+https://shop.test/_next/static/chunks/main-0f1e2d3c4b5a6978.js
+https://shop.test/_next/static/chunks/webpack-6a7b8c9d0e1f2a3b.js
+https://shop.test/_next/static/chunks/framework-1c2d3e4f5a6b7c8d.js
+https://shop.test/_next/static/chunks/pages/_app-0123456789abcdef.js
+https://shop.test/_next/static/chunks/pages/index-fedcba9876543210.js
+https://shop.test/_next/static/chunks/app/layout-9a8b7c6d5e4f3a2b.js
+https://shop.test/_next/static/chunks/app/page-2b3c4d5e6f7a8b9c.js
+https://shop.test/_next/static/chunks/polyfills-c67a75d1b6f99dc8.js
+# Vite (8-character base64url, sometimes without a digit, sometimes with - or _)
+https://shop.test/assets/index-CLlpVvjr.js
+https://shop.test/assets/index-B_x-9aQz.js
+https://shop.test/assets/index-DwRzp7aL.js
+https://shop.test/assets/vendor-Bq3_zXkL.js
+https://shop.test/assets/Checkout-C8yTnK2m.js
+https://shop.test/assets/index-BDgTbPZq.js
+https://shop.test/assets/Login-Dk_-aQ3x.js
+https://shop.test/assets/react-vendor-CfXl8PqZ.js
+# Rollup
+https://shop.test/build/main-4b6d8f1a.js
+https://shop.test/build/chunk-7c9e1a3b.js
+# Parcel
+https://shop.test/index.2c4e6a8b.js
+https://shop.test/app.f1e2d3c4.js
+https://shop.test/vendor.0d9c8b7a.js
+# esbuild
+https://shop.test/out/index-ABCD1234.js
+https://shop.test/out/chunk-QWER5678.js
+https://shop.test/out/entry-4ZK7M2PX.js
+# Angular CLI
+https://shop.test/main.2b6d7f0a9c3e1b84.js
+https://shop.test/polyfills.8e1f3a5c7b9d2e46.js
+https://shop.test/runtime.1a3c5e7b9d2f4a6c.js
+# SvelteKit and Astro
+https://shop.test/_app/immutable/entry/start.BXyQ2xvN.js
+https://shop.test/_app/immutable/chunks/index.Dq9Wn3Lp.js
+https://shop.test/_astro/hoisted.B7kQ0aRz.js
+# Remix
+https://shop.test/build/entry.client-HJ3KL4MN.js
+https://shop.test/build/root-2QWERTY7.js

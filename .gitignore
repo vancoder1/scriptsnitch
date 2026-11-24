@@ -2,3 +2,6 @@ scriptsnitch-out/
 docs/superpowers/
 .superpowers/
 node_modules/
+data/build/entities.js
+data/build/tlds-alpha-by-domain.txt
+data/build/LICENSE-third-party-web

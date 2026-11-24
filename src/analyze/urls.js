@@ -1,11 +1,119 @@
-// Script URL identity (design §8). Task 8 replaces this first version of isBuildToken with the
-// full heuristic and adds URL kinds and slots.
+// Script URL identity (design §8 "URL kinds" and "Slots").
 
-// A content-derived token in a file name: 8+ hex characters, or 8+ base64url characters that mix
-// character classes (letters with digits, or upper with lower case).
-export function isBuildToken(segment) {
-  if (typeof segment !== 'string' || segment.length < 8 || !/^[A-Za-z0-9_-]+$/.test(segment)) return false;
-  if (/^[0-9a-f]+$/.test(segment) && /[0-9]/.test(segment)) return true;
-  const classes = [/[a-z]/, /[A-Z]/, /[0-9]/].filter((r) => r.test(segment)).length;
-  return classes >= 2;
+const QUERY_VERSION_PARAMS = ['ver', 'v', 'version', '_v', 'rev'];
+
+// A content-derived token: 8-40 characters. Hex needs both digits and letters; other tokens need
+// two character classes and no run of more than five lowercase letters (words have long runs).
+export function isBuildToken(s) {
+  if (typeof s !== 'string' || s.length < 8 || s.length > 40 || !/^[A-Za-z0-9_-]+$/.test(s)) return false;
+  if (/^[0-9a-f]+$/.test(s)) return /[0-9]/.test(s) && /[a-f]/.test(s);
+  if (/^[0-9]+$/.test(s)) return false;
+  const classes = [/[a-z]/, /[A-Z]/, /[0-9]/, /[_-]/].filter((r) => r.test(s)).length;
+  if (classes < 2) return false;
+  const longestLower = Math.max(0, ...(s.match(/[a-z]+/g) ?? []).map((run) => run.length));
+  return longestLower <= 5;
+}
+
+// The build token inside a file name, preferring the part after a dash (name-TOKEN) over a whole
+// dot-separated part, so Vite's index-B_x-9aQz.js yields B_x-9aQz, not index-B_x-9aQz.
+function tokenInFilename(filename) {
+  const stem = filename.replace(/\.[mc]?js$/i, '');
+  for (const part of stem.split('.')) {
+    for (let i = part.indexOf('-'); i !== -1; i = part.indexOf('-', i + 1)) {
+      const tail = part.slice(i + 1);
+      if (isBuildToken(tail)) return tail;
+    }
+    if (isBuildToken(part)) return part;
+  }
+  return null;
+}
+
+const VERSION_PATTERNS = [
+  /@(\d+\.\d+(?:\.\d+)*(?:-[0-9A-Za-z.]+)?)(?=\/|$)/, // npm CDNs: lib@3.7.1/
+  /\/v?(\d+\.\d+(?:\.\d+)*)(?=\/)/, // a version directory: /1.2.3/ or /v1.2.3/
+  /-(\d+\.\d+(?:\.\d+)*)(?:\.min)?\.[mc]?js$/, // file name: modernizr-2.6.2.min.js
+  /\.(\d+\.\d+\.\d+)(?:\.min)?\.[mc]?js$/, // file name: lib.1.2.3.js
+];
+
+function pathVersion(pathname) {
+  for (const re of VERSION_PATTERNS) {
+    const m = re.exec(pathname);
+    if (m) return { version: m[1], index: m.index + m[0].indexOf(m[1]) };
+  }
+  return null;
+}
+
+function queryVersion(searchParams) {
+  for (const name of QUERY_VERSION_PARAMS) {
+    const value = searchParams.get(name);
+    if (value) return { name, value };
+  }
+  return null;
+}
+
+// kind: 'code' (blob:, data:, wasm:), 'hashed', 'versioned' or 'floating'.
+export function classifyUrl(url) {
+  if (/^(blob|data|wasm):/i.test(url)) return { kind: 'code' };
+  const u = new URL(url);
+  const filename = u.pathname.split('/').pop() || '';
+  const qv = queryVersion(u.searchParams);
+  const extra = qv ? { queryVersion: qv.value } : {};
+  const token = tokenInFilename(filename);
+  if (token) return { kind: 'hashed', token, ...extra };
+  const pv = pathVersion(u.pathname);
+  if (pv) return { kind: 'versioned', version: pv.version, ...extra };
+  return { kind: 'floating', ...extra };
+}
+
+function query(searchParams, versionParam) {
+  const pairs = [...searchParams].map(([k, v]) => [k, k === versionParam ? '{version}' : v]);
+  pairs.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  return pairs.length ? `?${pairs.map(([k, v]) => (v === '{version}' ? `${encodeURIComponent(k)}={version}` : `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)).join('&')}` : '';
+}
+
+// The URL with the build token or version replaced by a placeholder, and query parameters sorted.
+export function slotOf(url, classification = classifyUrl(url)) {
+  if (classification.kind === 'code') return url.split(':')[0] + ':';
+  const u = new URL(url);
+  let path = u.pathname;
+  if (classification.kind === 'hashed') {
+    const at = path.lastIndexOf(classification.token);
+    path = `${path.slice(0, at)}{token}${path.slice(at + classification.token.length)}`;
+  } else if (classification.kind === 'versioned') {
+    const pv = pathVersion(path);
+    path = `${path.slice(0, pv.index)}{version}${path.slice(pv.index + pv.version.length)}`;
+  }
+  const qv = queryVersion(u.searchParams);
+  return `${u.origin}${path}${query(u.searchParams, qv?.name)}`;
+}
+
+const paramKey = (u, name) => `${u.origin}${u.pathname}#${name}`;
+
+// Query parameters whose values differ between visit A and visit B for the same script path.
+export function findVolatileParams(urlsA, urlsB) {
+  const byPath = new Map();
+  for (const url of urlsB) {
+    try { const u = new URL(url); byPath.set(`${u.origin}${u.pathname}`, u.searchParams); } catch { /* not a URL */ }
+  }
+  const out = new Set();
+  for (const url of urlsA) {
+    let u;
+    try { u = new URL(url); } catch { continue; }
+    const other = byPath.get(`${u.origin}${u.pathname}`);
+    if (!other) continue;
+    for (const [name, value] of u.searchParams) {
+      if (other.has(name) && other.get(name) !== value) out.add(paramKey(u, name));
+    }
+  }
+  return out;
+}
+
+export function maskParams(url, volatile) {
+  let u;
+  try { u = new URL(url); } catch { return url; }
+  let changed = false;
+  for (const name of [...u.searchParams.keys()]) {
+    if (volatile.has(paramKey(u, name))) { u.searchParams.delete(name); changed = true; }
+  }
+  return changed ? u.toString() : url;
 }

@@ -34,6 +34,7 @@
     "test": "node --test --test-concurrency=1 \"test/**/*.test.js\"",
     "test:unit": "node --test \"test/unit/**/*.test.js\" \"test/run/**/*.test.js\"",
     "test:chrome": "node --test --test-concurrency=1 \"test/chrome/**/*.test.js\"",
-    "test:scenarios": "node --test --test-concurrency=1 \"test/scenarios/**/*.test.js\""
+    "test:scenarios": "node --test --test-concurrency=1 \"test/scenarios/**/*.test.js\"",
+    "examples": "node test/fixtures/site/examples.js"
   }
 }

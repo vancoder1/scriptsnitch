@@ -29,6 +29,9 @@ changes one thing.
   assert none).
 - **A capture change gets a real-Chrome test** in `test/chrome/`, and must pass on Linux, where CI
   runs it: Chrome behaves differently between platforms (see `src/capture/proxy.js`).
+- **A change to what an issue or pull request says** is shown in `docs/example-issue.md` and
+  `docs/example-pr.md`: regenerate them with `npm run examples` (real Chrome, about a minute) and commit
+  them with the change.
 - **Workflows** pin actions by commit SHA with the version in a comment. `actionlint` runs on every
   workflow change.
 - One commit per change, with a message that says why.

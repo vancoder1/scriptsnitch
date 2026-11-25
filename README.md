@@ -152,6 +152,9 @@ a week. A page that could not be checked (an error page, a bot challenge, a time
 - **One status issue** says when the last run was (if that is more than two days old, scriptsnitch has
   stopped running), which pages were checked, and holds the cross-run state.
 
+See [an example site issue](docs/example-issue.md) and [the approval pull request](docs/example-pr.md)
+that came with it, both written by a real run against the demo site's tag-manager skimmer.
+
 ## Approving changes
 
 - **The approval pull request** edits `approved.json`, one per site. *Routine* proposals (Medium

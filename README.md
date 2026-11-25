@@ -122,8 +122,10 @@ a week. A page that could not be checked (an error page, a bot challenge, a time
   versioned and hashed third-party files). `origin` lets the vendor update the file and checks its
   behaviour instead (for tag managers and widgets). `deploy` follows your own releases: a new build is
   accepted when the page's own entry bundle gets a new build token, when your build's chunk map names
-  the new file, or when an optional `deployMarker` changes. A content change at an *unchanged* hashed
-  file name is never accepted, because that is what a tampered file looks like.
+  the new file, or when an optional `deployMarker` changes. With a `deployMarker` set up, only the
+  marker counts as a deploy, since anyone who can edit the HTML can change an entry token. A content
+  change at an *unchanged* hashed file name is never accepted, because that is what a tampered file
+  looks like.
 - **Behaviour is checked on every visit, even for approved scripts.** A new place a script sends data,
   a new listener on a card field, code running while a password is typed, runtime code creation, a
   jump in obfuscation, or a new host name in its code is reported even when the file itself is
@@ -146,7 +148,8 @@ a week. A page that could not be checked (an error page, a bot challenge, a time
   words and the code diffs. A comment (which notifies) is posted only when a new finding appears.
 - A Medium finding drops off after two clean runs and returns silently within 30 days. **A High
   finding that disappears stays listed as "not seen since"** until a person closes the issue: attackers
-  remove skimmers to cover their tracks.
+  remove skimmers to cover their tracks. So does a High that a later deploy accepted rather than an
+  approval (a file dropped in the build folder, a new inline script on a sensitive page).
 - **Closing the issue mutes what is in it**; something new reopens it. The issue closes itself when
   nothing unapproved is live.
 - **One status issue** says when the last run was (if that is more than two days old, scriptsnitch has

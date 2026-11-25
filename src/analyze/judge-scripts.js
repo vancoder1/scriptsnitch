@@ -23,6 +23,7 @@ function judgeInline(ctx, page, profile, template, visits) {
   if (deployEntry && (accepted || ctx.evident)) {
     ctx.markSeen('scripts', deployEntry);
     if (!accepted) {
+      ctx.acceptByDeploy(`subject:${template}`);
       st.inline[page.path] = [...(st.inline[page.path] ?? []), short(template)];
       ctx.add({ ...base, kind: 'accepted', subject: `inline ${short(template)}`, page: page.path, severity: 'info', reasons: ['a new inline script came with a deploy'] });
     }
@@ -46,6 +47,7 @@ function judgeOwnFile(ctx, page, base, url, cls, obs, covering) {
     if (immutable) {
       ctx.add({ ...base, kind: 'in-place-change', subject: url, severity: 'high', reasons: [cls.kind === 'hashed' ? 'the content changed at a file name that carries a build token' : `the content of version ${cls.version} changed in place`], evidence: [hash], data });
     } else if (ctx.evident) {
+      ctx.acceptByDeploy(`content:${url}|${hash}`);
       st.ownHashes[ownKey(url)] = short(hash);
       ctx.add({ ...base, kind: 'accepted', subject: url, severity: 'info', reasons: ['changed with a deploy'] });
     } else {
@@ -60,6 +62,7 @@ function judgeOwnFile(ctx, page, base, url, cls, obs, covering) {
     // Loaded directly by the page and nothing to compare with yet (a first or stateless run).
     const known = entrySlot && (!ctx.entry.previous || slot in ctx.entry.previous);
     if (known || buildFileAccepted({ token: cls.token, referenced: obs.referenced, evident: ctx.evident, deployTokens: st.deployTokens })) {
+      if (!entrySlot) ctx.acceptByDeploy(`content:${url}|${hash}`);
       st.ownHashes[ownKey(url)] = short(hash);
       if (ctx.evident && !obs.referenced && !st.deployTokens.includes(cls.token)) st.deployTokens.push(cls.token);
       return;

@@ -95,6 +95,15 @@ test('build-file follows the chunk map and deploy evidence', () => {
   assert.deepEqual(kinds(run(one('/', { scripts: [ext(`${SITE}/assets/index-C9xR1bTp.js`), ext(`${SITE}/assets/evil-Zz9Yy8Xx.js`, { creator: `${SITE}/assets/index-C9xR1bTp.js` })] }), appr, st())), []);
 });
 
+test('what a deploy accepted, rather than an approval, is listed so its alerts are not cleared silently', () => {
+  const appr = approved({ scripts: [entry({ id: 'build', match: `${SITE}/assets/*-{token}.js`, trust: 'deploy' })] });
+  const st = () => { const s = state(); s.sites[SITE] = { entrySlots: { [`${SITE}/assets/index-{token}.js`]: 'B7kQ0aRz' }, marker: null, ownHashes: {}, inline: {}, deployTokens: [], seen: {}, domains: {}, domainCheck: null }; return s; };
+  const evil = `${SITE}/assets/evil-Zz9Yy8Xx.js`;
+  const r = run(one('/', { scripts: [ext(`${SITE}/assets/index-C9xR1bTp.js`), ext(evil, { creator: `${SITE}/assets/index-C9xR1bTp.js` })] }), appr, st());
+  assert.ok(r.acceptedByDeploy.includes(`content:${evil}|${H(evil)}`), r.acceptedByDeploy.join(' '));
+  assert.ok(!r.acceptedByDeploy.some((x) => x.includes('index-C9xR1bTp')), 'a replaced entry file is the deploy itself');
+});
+
 test('new-inline: High on sensitive pages without a deploy, Medium with one; deploy-trust inline accepted with deploy evidence', () => {
   const t1 = 'a'.repeat(64);
   const t2 = 'b'.repeat(64);

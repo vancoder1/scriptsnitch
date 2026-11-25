@@ -136,7 +136,7 @@ export async function report({ snapshotPath, outDir = dirname(snapshotPath), con
     prs[site] = pr.prNumber;
     const existing = sites.get(site);
     const siteResult = await reconcileSite(github, {
-      site, issue: existing?.issue ?? null, siteState: existing?.state ?? null, findings: group.findings, run: { conclusive: conclusiveBySite.get(site) ?? new Set(), observed }, now, notify: config.notify ?? [],
+      site, issue: existing?.issue ?? null, siteState: existing?.state ?? null, findings: group.findings, run: { conclusive: conclusiveBySite.get(site) ?? new Set(), observed, acceptedByDeploy: new Set(result.acceptedByDeploy ?? []) }, now, notify: config.notify ?? [],
       links: { runUrl, prUrl: pr.prNumber && repoUrl ? `${repoUrl}/pull/${pr.prNumber}` : null, evidenceUrl: runUrl ? `${runUrl}#artifacts` : null },
       diffs, edits: pr.fallback === 'issue' ? pr.edits : null,
     });

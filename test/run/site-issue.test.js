@@ -149,6 +149,20 @@ test('a finding still observed but no longer raised was approved and is resolved
   assert.ok(!issuesFor(gh)[0].body.includes('Not seen since'));
 });
 
+test('a High that a deploy accepted, rather than an approval, stays listed until a person closes the issue', async () => {
+  const gh = createFakeGitHub();
+  const dropped = 'https://shop.example/assets/evil-Zz9Yy8Xx.js';
+  const seen = `content:${dropped}|abc`;
+  await step(gh, 0, [{ ...f('build-file', dropped, 'high', { seenOn: ['/checkout'] }), observedAs: [seen] }]);
+  for (const n of [1, 2]) {
+    const { issue, state } = (await readSites(gh)).get(SITE);
+    // Day 1 the deploy accepted it; on day 2 it is simply part of the baseline.
+    await reconcileSite(gh, { site: SITE, issue, siteState: state, findings: [], run: { conclusive: allConclusive, observed: new Set([seen]), acceptedByDeploy: new Set(n === 1 ? [seen] : []) }, now: day(n), links: {}, diffs: new Map() });
+    assert.equal(issuesFor(gh)[0].state, 'open', `day ${n}`);
+    assert.match(issuesFor(gh)[0].body, /Accepted with a deploy on 2026-11-25/);
+  }
+});
+
 test('a subject with a pipe cannot break out of its table cell', async () => {
   const gh = createFakeGitHub();
   await step(gh, 0, [f('new-origin', 'https://evil.example/a.js|[x](https://phish.example)', 'high')]);

@@ -12,6 +12,7 @@ const KEEP_DROPPED_DAYS = 30;
 const KEEP_MUTED_DAYS = 90;
 const BODY_LIMIT = 60000;
 const MARKER_LIMIT = 30000;
+const DEPLOY_ACCEPTS = new Set(['build-file', 'new-inline']);
 const BADGE = { high: '🔴 High', medium: '🟠 Medium' };
 
 export async function readSites(github) {
@@ -31,7 +32,7 @@ const hostOf = (site) => { try { return new URL(site).host; } catch { return sit
 const where = (e, c = code) => `${(e.seenOn?.length ? e.seenOn : [e.page]).map(c).join(', ')}${e.profiles?.length ? ` (${e.profiles.map(md).join(', ')})` : ''}`;
 const more = (n, what) => (n > 0 ? [`…and ${n} more ${what}; report.json and the job summary list everything.`, ''] : []);
 const row = (key, e, today, links) => {
-  const gone = e.last !== today ? `**Not seen since ${e.last}.** ` : '';
+  const gone = e.acceptedAt ? `**Accepted with a deploy on ${e.acceptedAt}, not approved: close this issue if that deploy was yours.** ` : e.last !== today ? `**Not seen since ${e.last}.** ` : '';
   const why = `${gone}${(e.reasons ?? []).map(md).join('<br>')}${links.evidenceUrl ? ` [evidence](${links.evidenceUrl})` : ''}`;
   const approve = e.severity === 'high' ? 'pending' : 'routine';
   return `| ${BADGE[e.severity] ?? e.severity} | ${cellCode(e.kind)} ${cellCode(e.subject)} | ${where(e, cellCode)} | ${why} | ${links.prUrl ? `[${approve}](${links.prUrl})` : approve} |`;
@@ -81,8 +82,15 @@ export async function reconcileSite(github, { site, issue = null, siteState = nu
   }
   for (const [k, e] of Object.entries(st.findings)) {
     if (live.has(k) || e.droppedAt) continue;
-    // Still observed but no longer raised: approved or accepted, so resolved without a word.
-    if (e.observedAs?.some((x) => run.observed?.has(x))) { delete st.findings[k]; continue; }
+    // Still observed but no longer raised: approved or accepted, so resolved without a word. A High
+    // raised under a deploy entry (a file dropped in the build folder, a new inline script with no
+    // deploy) that a later deploy accepted, rather than an approval, stays listed until a person
+    // closes the issue: whoever can change what the page loads can make a deploy evident.
+    if (e.observedAs?.some((x) => run.observed?.has(x))) {
+      if (e.severity === 'high' && DEPLOY_ACCEPTS.has(e.kind) && (e.acceptedAt || e.observedAs.some((x) => run.acceptedByDeploy?.has(x)))) { e.acceptedAt ??= today; continue; }
+      delete st.findings[k];
+      continue;
+    }
     const seenOn = e.seenOn ?? [];
     const pairs = (seenOn.length ? seenOn : [e.page]).flatMap((p) => (e.profiles?.length ? e.profiles : ['desktop']).map((pr) => `${p}|${pr}`));
     // A finding with no page (a domain finding) is absent only when a check no longer raised it.

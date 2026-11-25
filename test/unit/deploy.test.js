@@ -30,6 +30,13 @@ test('a changed deploy marker is deploy evidence; a first reading is not', () =>
   assert.equal(deployEvident({ previousEntrySlots: {}, currentEntrySlots: {}, previousMarker: null, currentMarker: 'v1' }), false);
 });
 
+test('with a deploy marker set up, only the marker is deploy evidence', () => {
+  // Anyone who can edit the HTML can change an entry token; the marker is what the deploy sets.
+  const slots = { previousEntrySlots: { 'https://s/a/index-{token}.js': 'B7kQ0aRz' }, currentEntrySlots: { 'https://s/a/index-{token}.js': 'C9xR1bTp' } };
+  assert.equal(deployEvident({ ...slots, previousMarker: 'v1', currentMarker: 'v1' }), false);
+  assert.equal(deployEvident({ ...slots, previousMarker: 'v1', currentMarker: 'v2' }), true);
+});
+
 test('the first run has no deploy evidence', () => {
   assert.equal(deployEvident({ previousEntrySlots: null, currentEntrySlots: { 'https://s/a/index-{token}.js': 'B7kQ0aRz' } }), false);
 });

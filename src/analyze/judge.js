@@ -93,7 +93,7 @@ export function confirm(findings, state, run) {
   return { reportable, pendingSightings };
 }
 
-function siteContext({ site, approved, status, snapshot, now, pages, includeVisit, collector, drill }) {
+function siteContext({ site, approved, status, snapshot, now, pages, includeVisit, collector, drill, acceptedByDeploy = new Set() }) {
   const section = siteSection(approved, site);
   const own = ownOrigins(site, section);
   const st = siteState(status, site);
@@ -113,6 +113,8 @@ function siteContext({ site, approved, status, snapshot, now, pages, includeVisi
     firstRun: !approved.sites[site],
     inherit: (path, url, entries) => inherited.set(`${path} ${url}`, entries),
     inherited: (path, url) => inherited.get(`${path} ${url}`),
+    // What a deploy (or the build's chunk map) accepted, not an approval, in observedAs terms.
+    acceptByDeploy: (x) => acceptedByDeploy.add(bound(x, 320)),
     add: (f) => {
       collector.add({ ...f, site, drill });
       if (CONTENT_KINDS.has(f.kind)) changed.add(scriptIdentity(f.attributedTo));
@@ -183,6 +185,7 @@ export function judge({ snapshot, approved, state, now = Date.now() }) {
   const drillCollector = createCollector();
   const sites = [...new Set(snapshot.pages.map((p) => p.site))];
   const firstRunSites = new Set();
+  const acceptedByDeploy = new Set();
   const inconclusive = [];
   const observed = new Map();
   const headers = {};
@@ -199,7 +202,7 @@ export function judge({ snapshot, approved, state, now = Date.now() }) {
 
   for (const site of sites) {
     const pages = snapshot.pages.filter((p) => p.site === site);
-    const ctx = judgeSite({ site, approved, status, snapshot, now, pages, includeVisit: (v) => v.role !== 'drill', collector, drill: false });
+    const ctx = judgeSite({ site, approved, status, snapshot, now, pages, includeVisit: (v) => v.role !== 'drill', collector, drill: false, acceptedByDeploy });
     if (ctx.firstRun) firstRunSites.add(site);
     for (const [id, o] of ctx.observed) observed.set(`${site} ${id}`, o);
     headers[site] = observedHeaders(pages);
@@ -238,6 +241,7 @@ export function judge({ snapshot, approved, state, now = Date.now() }) {
     drill: drillResult(drillFindings, snapshot.pages),
     inconclusive,
     headers,
+    acceptedByDeploy: [...acceptedByDeploy],
     state: status,
   };
 }

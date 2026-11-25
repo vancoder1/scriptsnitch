@@ -21,8 +21,10 @@ export function entrySlotsOf(visits, own) {
 
 // A deploy is evident when an entry slot that existed last run now has another token or version
 // (a replacement, never an addition), or when the deploy marker changed. The first run has none.
+// With a marker set up, only the marker counts: anyone who can edit the HTML can change an entry
+// token, while the marker is what the deploy itself sets.
 export function deployEvident({ previousEntrySlots, currentEntrySlots, previousMarker = null, currentMarker = null }) {
-  if (previousMarker !== null && currentMarker !== null && previousMarker !== currentMarker) return true;
+  if (previousMarker !== null || currentMarker !== null) return previousMarker !== null && currentMarker !== null && previousMarker !== currentMarker;
   if (!previousEntrySlots) return false;
   return Object.entries(currentEntrySlots).some(([slot, token]) => slot in previousEntrySlots && previousEntrySlots[slot] !== token);
 }

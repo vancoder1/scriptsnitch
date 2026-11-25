@@ -7,6 +7,7 @@ const PUNCTUATORS = [
   '=>', '==', '!=', '<=', '>=', '&&', '||', '??', '?.', '++', '--', '+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=', '**', '<<', '>>',
 ];
 const REGEX_AFTER_WORDS = new Set(['return', 'typeof', 'case', 'do', 'else', 'in', 'instanceof', 'new', 'delete', 'void', 'throw', 'yield', 'await', 'of']);
+const LINE_END = /[\n\r\u2028\u2029]/g;
 const IDENT_START = /[\p{ID_Start}$_\\]/u;
 const IDENT_PART = /[\p{ID_Continue}$‌‍\\]/u;
 
@@ -85,8 +86,10 @@ export function tokenize(src) {
     let end;
     let type;
     if (ch === '/' && src[i + 1] === '/') {
-      end = src.indexOf('\n', i);
-      if (end === -1) end = src.length;
+      // A line comment ends at any line terminator JavaScript knows, not only \n: code after a
+      // \r, U+2028 or U+2029 runs, so it must not be read as part of the comment.
+      LINE_END.lastIndex = i;
+      end = LINE_END.exec(src)?.index ?? src.length;
       type = 'comment';
     } else if (ch === '/' && src[i + 1] === '*') {
       end = src.indexOf('*/', i + 2);

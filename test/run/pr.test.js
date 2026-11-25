@@ -152,3 +152,13 @@ test("a commit with no linked account counts as a person's", async () => {
   await sync(gh, [routine('a'), routine('b')]);
   assert.equal(gh.file(PATH, BRANCH), edited);
 });
+
+test('a proposal the approved file could not read back is left out and reported, never written', async () => {
+  const gh = fresh();
+  const odd = { ...routine('a'), finding: 'new-slot|https://chat.example/a*.js|*', entry: { ...routine('a').entry, id: 'chat-odd', match: 'https://chat.example/a*.js', trust: 'exact', sha256: ['b'.repeat(64)] } };
+  const r = await sync(gh, [odd, routine('b')]);
+  assert.deepEqual(r.rejected.map((x) => x.key), [odd.finding]);
+  assert.match(r.rejected[0].why, /literal URL/);
+  assert.deepEqual(branchFile(gh).scripts.map((e) => e.id), ['chat-b', 'mine'], 'the file on the branch still loads');
+  assert.ok(!gh.state.pulls[0].body.includes('a*.js'));
+});

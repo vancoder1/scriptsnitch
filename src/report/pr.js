@@ -107,12 +107,34 @@ export function renderEdits(site, proposals, path) {
 async function writeFile(github, { path, branch, site, proposals, message }) {
   const current = await github.getContent(path, branch);
   const next = applyProposals(parseFile(current, path), site, proposals);
-  await github.putContent(path, { text: serializeApproved(next), sha: current?.sha, branch, message });
+  const text = serializeApproved(next);
+  parseApproved(text, path); // never write a file the next run could not read
+  await github.putContent(path, { text, sha: current?.sha, branch, message });
   return next;
 }
 
+// Proposals the approved file could not read back, such as a URL holding `*` or `{` proposed as an
+// exact match, are left out and reported: writing one would stop every later run at the loader.
+function readableProposals(site, proposals, path) {
+  const ok = [];
+  const rejected = [];
+  for (const p of proposals) {
+    try {
+      parseApproved(serializeApproved(applyProposals(emptyApproved(), site, [p])), path);
+      ok.push(p);
+    } catch (e) {
+      rejected.push({ key: keyOf(p), why: e.message });
+    }
+  }
+  return { ok, rejected };
+}
+
 export async function syncApprovalPr(github, { site, proposals, approvedPath, base = 'main', propose = 'pr' }) {
-  const live = proposals.filter((p) => !p.site || p.site === site);
+  const { ok, rejected } = readableProposals(site, proposals.filter((p) => !p.site || p.site === site), approvedPath);
+  return { ...(await syncReadable(github, { site, live: ok, approvedPath, base, propose })), rejected };
+}
+
+async function syncReadable(github, { site, live, approvedPath, base, propose }) {
   const edits = renderEdits(site, live, approvedPath);
   if (propose === 'issue') return { prNumber: null, fallback: live.length ? 'issue' : null, edits };
   const host = hostOf(site);

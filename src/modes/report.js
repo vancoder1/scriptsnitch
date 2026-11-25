@@ -9,7 +9,7 @@ import { judge, observedIndex } from '../analyze/judge.js';
 import { proposalsFor, staleProposals } from '../analyze/proposals.js';
 import { readStatus, reconcileStatus } from '../report/status-issue.js';
 import { readSites, reconcileSite } from '../report/site-issue.js';
-import { syncApprovalPr, findApprovalPull } from '../report/pr.js';
+import { syncApprovalPr, findApprovalPull, renderEdits } from '../report/pr.js';
 import { previousEvidence } from '../report/artifacts.js';
 import { renderDiff } from '../report/diff.js';
 import { domainsToCheck, checkDomains } from '../report/domains.js';
@@ -124,7 +124,15 @@ export async function report({ snapshotPath, outDir = dirname(snapshotPath), con
     }
     allProposals.push(...proposals);
     if (dryRun) continue;
-    const pr = await syncApprovalPr(github, { site, proposals, approvedPath, base, propose });
+    // The site issue is the alert: a failure writing the approval pull request must not stop it.
+    let pr;
+    try {
+      pr = await syncApprovalPr(github, { site, proposals, approvedPath, base, propose });
+    } catch (e) {
+      notes.push(`The approval pull request for ${site} could not be written (${e.message}); the proposed edits are in the site issue instead.`);
+      pr = { prNumber: null, fallback: 'issue', edits: renderEdits(site, proposals, approvedPath), rejected: [] };
+    }
+    for (const x of pr.rejected) notes.push(`scriptsnitch cannot propose ${x.key} in the approved file, because it would not load again (${x.why}). Approve it by hand with a pattern.`);
     prs[site] = pr.prNumber;
     const existing = sites.get(site);
     const siteResult = await reconcileSite(github, {

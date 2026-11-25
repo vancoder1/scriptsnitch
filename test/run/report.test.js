@@ -7,6 +7,7 @@ import { report } from '../../src/modes/report.js';
 import { parseConfig } from '../../src/config/config.js';
 import { parseApproved, emptyApproved, approvePending, serializeApproved, siteSection } from '../../src/config/approved.js';
 import { readMarker } from '../../src/report/markers.js';
+import { HttpError } from '../../src/report/github.js';
 import { DRILL_ORIGIN } from '../../src/capture/drill.js';
 import { createFakeGitHub } from '../helpers/fake-github.js';
 import { writeZip } from '../helpers/zip-writer.js';
@@ -131,6 +132,19 @@ test('a skimmer appears: High issue, pending proposal, diff in the issue', async
   const pending = parseApproved(h.gh.file(PATH, pr.head.ref), PATH).sites[SITE].pending.map((p) => p.finding.split('|')[0]);
   assert.ok(pending.includes('new-origin') && pending.includes('in-place-change'));
   assert.equal(r.high >= 2, true);
+});
+
+test('the site issue is written even when the approval pull request cannot be', async (t) => {
+  const h = await establish();
+  t.after(() => rmSync(h.dir, { recursive: true, force: true }));
+  h.gh.fail('putContent', new HttpError('PUT', 'contents', 500, '{"message":"Server Error"}'));
+  const r = await doRun(h, 2, skimmed(), { evidence: { [H('skimmed')]: SKIMMER, [H(INDEX)]: APP_SOURCE } });
+  const [issue] = siteIssues(h.gh);
+  assert.equal(issue.state, 'open');
+  assert.match(issue.body, /new-origin/);
+  assert.match(issue.body, /Proposed edits to the approved file/);
+  assert.match(statusIssue(h.gh).body, /approval pull request[^\n]*could not be/);
+  assert.ok(r.high >= 2);
 });
 
 test('a deploy with new chunks raises nothing, nor a lazily loaded chunk a day later', async (t) => {

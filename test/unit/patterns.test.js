@@ -97,3 +97,10 @@ test('validatePattern explains what is wrong', () => {
   assert.match(validatePattern('password:field', 'listener'), /kind:role:event/);
   assert.match(validatePattern('password:elsewhere:input', 'listener'), /role/);
 });
+
+test('an approved URL with an escaped unreserved character matches itself and its unescaped form', () => {
+  assert.equal(matchUrl('https://x.example/%7Euser/a.js', 'https://x.example/%7Euser/a.js'), true);
+  assert.equal(matchUrl('https://x.example/a%2Db.js', 'https://x.example/a-b.js'), true);
+  assert.equal(matchUrl('https://x.example/~user/a.js', 'https://x.example/%7Euser/a.js'), true);
+  assert.equal(matchUrl('https://x.example/a%2Fb.js', 'https://x.example/a/b.js'), false, 'an escaped slash is not a slash');
+});

@@ -101,7 +101,8 @@ export function matchUrl(pattern, url, { accountKeyParams = [] } = {}) {
     const parent = p.host.slice(2);
     if (!host.endsWith(`.${parent}`)) return false;
   } else if (host !== p.host) return false;
-  if (!matchPath(p.path, decodeUnreserved(u.pathname))) return false;
+  // Both sides as the server reads them: /%7Euser is /~user, whichever way either is written.
+  if (!matchPath(decodeUnreserved(p.path), decodeUnreserved(u.pathname))) return false;
   return matchQuery(p.query, u.searchParams, accountKeyParams);
 }
 

@@ -48,4 +48,16 @@ test('cellCode escapes every pipe, so text in a table cell cannot split it', () 
   const out = cellCode('https://evil.example/a.js|[x](https://phish.example)\\|');
   assert.ok(!/(?<!\\)\|/.test(out), out);
   assert.equal(cellCode('x'), '`x`');
+  // A backslash already before a pipe must not leave the escape open to a parser that pairs them.
+  assert.ok(!/\\\\\|/.test(cellCode('https://evil.example/a.js?q=\\|[x](https://phish.example)')));
+});
+
+test('neutralize stops every mention and reference GitHub would make, and leaves e-mail addresses', () => {
+  assert.equal(neutralize('.@octocat'), `.@${ZWJ}octocat`);
+  assert.equal(neutralize('@@octocat'), `@@${ZWJ}octocat`);
+  assert.equal(neutralize('see torvalds/linux#1'), `see torvalds/linux#${ZWJ}1`);
+  assert.equal(neutralize('item#12'), `item#${ZWJ}12`);
+  assert.equal(neutralize('GH-12 and gh-3'), `GH${ZWJ}-12 and gh${ZWJ}-3`);
+  assert.equal(neutralize('a@b.example'), 'a@b.example');
+  assert.equal(neutralize('&#38;'), '&#38;', 'an HTML entity is not a reference');
 });

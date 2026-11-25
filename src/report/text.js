@@ -5,13 +5,15 @@
 
 const ZWJ = '‍';
 
-// Stops @mentions (not e-mail addresses), autolinked URLs and #123 references.
+// Stops @mentions (an @ after anything but a letter or digit, so e-mail addresses stay), autolinked
+// URLs, and issue references: #123, owner/repo#123 and GH-123. An HTML entity (&#38;) is left alone.
 export function neutralize(text) {
   return String(text)
-    .replace(/(^|[^\w@.])@(?=[A-Za-z0-9])/g, `$1@${ZWJ}`)
+    .replace(/(^|[^\w])@(?=[A-Za-z0-9])/g, `$1@${ZWJ}`)
     .replace(/\b(https?|ftp|wss?):\/\//gi, '$1[:]//')
     .replace(/\bwww\./gi, 'www[.]')
-    .replace(/(^|[^\w&])#(?=\d)/g, `$1#${ZWJ}`);
+    .replace(/(?<!&)#(?=\d)/g, `#${ZWJ}`)
+    .replace(/\b(GH)-(?=\d)/gi, `$1${ZWJ}-`);
 }
 
 // Plain inline text, safe in a paragraph or a table cell: one line, no HTML, no Markdown syntax.
@@ -45,4 +47,6 @@ export function code(text) {
 // An inline code span for a table cell. GitHub splits a cell at every pipe, even inside a code span,
 // unless a backslash comes before it (it then shows a plain pipe). Script URLs may hold pipes, and
 // without this the rest of a URL would leave its cell as live Markdown.
-export const cellCode = (text) => code(text).replace(/\|/g, '\\|');
+// A backslash the text already has before a pipe is kept apart from the escape by a zero-width space,
+// so no parser can read the two backslashes as an escaped backslash and the pipe as a cell break.
+export const cellCode = (text) => code(text).replace(/\\?\|/g, (m) => (m.length === 2 ? '\\​\\|' : '\\|'));

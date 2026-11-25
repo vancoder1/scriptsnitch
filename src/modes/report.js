@@ -29,11 +29,19 @@ function loadSnapshot(path) {
   try { return { snapshot: validateSnapshot(parseJsonText(text, path)) }; } catch (e) { return { failure: `the snapshot is invalid (${e.message})` }; }
 }
 
+// Where a conclusive page ended, when that is another page of the site: an empty cart sends the
+// checkout to /cart, and the page is then judged as the cart.
+const bare = (path) => path.replace(/(.)\/$/, '$1');
+function endedOn(page, result) {
+  const final = result.conclusive ? URL.parse(result.visits.find((v) => v.conclusive && v.role !== 'drill')?.document.finalUrl ?? '') : null;
+  return final && bare(final.pathname) !== bare(page.path) ? final.pathname : null;
+}
+
 function pagesInfo(snapshot, config) {
   const names = new Map(config.pages.map((p) => [`${p.site}${p.path}`, p.name]));
   return snapshot.pages.flatMap((p) => Object.entries(p.profiles).filter(([, r]) => r).map(([profile, r]) => {
     const probes = r.visits.filter((v) => v.probe && v.role !== 'drill');
-    return { site: p.site, path: p.path, name: names.get(`${p.site}${p.path}`) ?? p.name, profile, conclusive: r.conclusive, reason: r.reason, probed: probes.length > 0, submitted: probes.length ? probes.some((v) => v.probe.submitted) : null };
+    return { site: p.site, path: p.path, name: names.get(`${p.site}${p.path}`) ?? p.name, profile, conclusive: r.conclusive, reason: r.reason, endedOn: endedOn(p, r), probed: probes.length > 0, submitted: probes.length ? probes.some((v) => v.probe.submitted) : null };
   }));
 }
 

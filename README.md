@@ -56,7 +56,10 @@ code diff is, and proposes the edit to the approved list in a pull request.
    }
    ```
 
-   Mark sign-in, checkout and payment pages `sensitive`: the rules are stricter there.
+   Mark sign-in, checkout and payment pages `sensitive`: the rules are stricter there. A checkout
+   usually sends an empty cart elsewhere: give it `steps` that add something to the cart, or an
+   `expect` selector, so the page you meant is the one watched. The status issue says when a page
+   ended on another page.
 
 3. Allow GitHub Actions to open pull requests: **Settings → Actions → General → Workflow permissions →
    Allow GitHub Actions to create and approve pull requests**. Without it, scriptsnitch shows the

@@ -112,6 +112,16 @@ test('while the first approval pull request waits, a new script is proposed as p
   assert.ok(file.pending.some((p) => p.entry?.match === evil));
 });
 
+test('the status issue says when a watched page ended on another page of the site', async (t) => {
+  const h = harness();
+  t.after(() => rmSync(h.dir, { recursive: true, force: true }));
+  const s = snap();
+  for (const v of s.pages[1].profiles.desktop.visits) v.document.finalUrl = `${SITE}/cart`;
+  await doRun(h, 0, s);
+  assert.match(statusIssue(h.gh).body, /ended on `\/cart`/);
+  assert.ok(!/ended on `\/`/.test(statusIssue(h.gh).body), 'the home page ended where it started');
+});
+
 test('a clean second run after merging closes nothing it should not', async (t) => {
   const h = await establish();
   t.after(() => rmSync(h.dir, { recursive: true, force: true }));

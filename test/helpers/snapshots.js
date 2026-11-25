@@ -36,7 +36,8 @@ export function snapshot(pages, { crossCheck = [], drill = false, sites = { [SIT
     pages: pages.map((p) => ({
       name: p.name ?? p.path, site: p.site ?? SITE, path: p.path, url: `${p.site ?? SITE}${p.path}`, sensitive: Boolean(p.sensitive),
       profiles: Object.fromEntries((p.profiles ?? ['desktop']).map((name) => {
-        const visits = p.visits ?? [visit({ role: 'A', ...(p.observed ?? {}) }), visit({ role: 'B', ...(p.observed ?? {}) })];
+        const at = { finalUrl: `${p.site ?? SITE}${p.path}` };
+        const visits = p.visits ?? [visit({ role: 'A', ...at, ...(p.observed ?? {}) }), visit({ role: 'B', ...at, ...(p.observed ?? {}) })];
         return [name, { conclusive: p.conclusive ?? true, reason: p.conclusive === false ? 'bot challenge (Cloudflare)' : null, viewport: { width: 1366, height: 768 }, visits }];
       })),
     })),

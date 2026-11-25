@@ -142,3 +142,13 @@ test('a page path with a pipe stays in its table cell', async () => {
   assert.ok(rows.length >= 4);
   for (const row of rows) assert.equal(row.split(/(?<!\\)\|/).length - 2, 3, row);
 });
+
+test('a page that ended on another page of the site says so, with what to do about it', async () => {
+  const gh = createFakeGitHub();
+  const info = runInfo();
+  info.pages[1].endedOn = '/cart';
+  await oneRun(gh, 0, info);
+  const body = statusIssues(gh)[0].body;
+  assert.match(body, /conclusive, ended on `\/cart`/);
+  assert.match(body, /add `steps` or `expect`/);
+});

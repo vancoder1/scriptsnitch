@@ -45,6 +45,18 @@ test('rejects a content hash that is not a SHA-256', () => {
   assert.equal(pointerOf(() => validateSnapshot(s)), '/pages/0/profiles/desktop/visits/0/scripts/0/ref/contentHash');
 });
 
+test('an evidence file must be evidence/<its hash>.js, so the report job reads nothing else', () => {
+  // The collect job runs Chrome on the watched site; the report job holds a write token.
+  for (const file of ['/proc/self/environ', '../../.env', `evidence/${'b'.repeat(64)}.js`, `evidence/${H}.js/../../x`]) {
+    const s = snapshot();
+    s.evidence[H].file = file;
+    assert.equal(pointerOf(() => validateSnapshot(s)), `/evidence/${H}/file`, file);
+  }
+  const s = snapshot();
+  s.evidence['../x'] = { file: 'evidence/../x.js', url: null, bytes: 1 };
+  assert.equal(pointerOf(() => validateSnapshot(s)), '/evidence/../x');
+});
+
 test('rejects text where a number is expected', () => {
   const s = snapshot();
   s.pages[0].profiles.desktop.visits[0].peers = '2';

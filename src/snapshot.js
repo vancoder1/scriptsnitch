@@ -80,10 +80,18 @@ export function validateSnapshot(obj) {
   if (obj?.format !== undefined && obj.format !== SNAPSHOT_FORMAT) {
     throw new SnapshotError(`this snapshot is format ${obj.format}; this version reads format ${SNAPSHOT_FORMAT}. Use the same scriptsnitch version for collect and report.`);
   }
+  let snapshot;
   try {
-    return checkValue(obj, spec, '');
+    snapshot = checkValue(obj, spec, '');
   } catch (e) {
     if (e instanceof SchemaError) throw new SnapshotError(e.detail, e.pointer);
     throw e;
   }
+  // The report job reads each evidence file and may quote it in an issue. The snapshot comes from the
+  // job that ran Chrome on the watched site, so the path is fixed by the hash and nothing else.
+  for (const [hash, e] of Object.entries(snapshot.evidence)) {
+    if (!/^[0-9a-f]{64}$/.test(hash)) throw new SnapshotError('an evidence key must be a 64-character lowercase SHA-256', `/evidence/${hash}`);
+    if (e.file !== `evidence/${hash}.js`) throw new SnapshotError(`an evidence file must be evidence/${hash}.js`, `/evidence/${hash}/file`);
+  }
+  return snapshot;
 }

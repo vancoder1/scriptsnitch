@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { judge, combine, confirm } from '../../src/analyze/judge.js';
+import { destinationSubject } from '../../src/analyze/judge-behaviour.js';
 import { firstRunSplit } from '../../src/analyze/firstrun.js';
 import { findingKey } from '../../src/analyze/keys.js';
 import { DRILL_ORIGIN } from '../../src/capture/drill.js';
@@ -343,4 +344,80 @@ test('a growing payload sent to a static-file path is the same never-approvable 
   const p = { values: { password: 'pw-123456' }, submitted: true, hits: [{ kind: 'password', encoding: 'base64', url, frame: 'top', initiator: null }], growth: [{ url: `${SITE}/img/pixel.gif`, field: 'query:d' }], storage: [] };
   const r = run(withProbe('/login', [ext(APP)], { destinations: [dest(url, { type: 'Image', phase: 'probe' })], probe: p }, { sensitive: true }), appr);
   assert.deepEqual(r.findings.filter((f) => f.kind === 'probe-exfil').map((f) => f.subject), [`static ${SITE}/img/pixel.gif`]);
+});
+
+test('a destination keeps its path on a path-keyed service and on a host that serves anyone\'s files', () => {
+  assert.equal(destinationSubject('https://connect.facebook.net/signals/config/123456789?v=2'), 'https://connect.facebook.net/signals/config/123456789');
+  assert.equal(destinationSubject('https://cdn.jsdelivr.net/gh/someone/x@1/x.js'), 'https://cdn.jsdelivr.net/gh/someone/x@1/x.js');
+  assert.equal(destinationSubject('https://api.example/v1/items?id=1'), 'https://api.example');
+});
+
+test('a <link> host approved only for another page is still reported', () => {
+  const appr = approved({ scripts: [appEntry()], destinations: [{ match: 'https://fonts.example', pages: ['/blog'], reason: 'r', approved: '2026-11-23' }] });
+  const r = run(one('/', { scripts: [ext(APP)], linkHosts: ['fonts.example'] }), appr);
+  assert.deepEqual(r.findings.map((f) => f.key), [findingKey('new-destination', 'https://fonts.example', '*')]);
+});
+
+test('a probe value is judged against the request it was found in, with that request\'s method', () => {
+  const appr = approved({ scripts: [appEntry({ input: true })], destinations: [{ match: 'https://api.example', pages: ['**', '/login'], reason: 'r', approved: '2026-11-01' }, { match: 'https://collect.example', pages: ['**', '/login'], reason: 'r', approved: '2026-11-01' }] });
+  const url = 'https://collect.example/c';
+  const p = { values: { password: 'pw-123456' }, submitted: true, hits: [{ kind: 'password', encoding: 'raw', url, frame: 'top', initiator: null }], growth: [], storage: [] };
+  const r = run(withProbe('/login', [ext(APP)], { destinations: [dest('https://api.example/x', { phase: 'probe' }), dest(url, { method: 'POST', phase: 'probe' })], probe: p }, { sensitive: true }), appr);
+  assert.deepEqual(r.findings.filter((f) => f.kind === 'probe-exfil').map((f) => f.subject), ['POST https://collect.example/c']);
+});
+
+test('a payload that grows alone is High, and the finding names the part of the request that grew', () => {
+  const appr = approved({ scripts: [appEntry({ input: true })], destinations: [{ match: SITE, pages: ['**', '/login'], reason: 'r', approved: '2026-11-01' }, { match: 'https://c2.example', pages: ['**', '/login'], reason: 'r', approved: '2026-11-01' }] });
+  const at = (url, growthUrl) => {
+    const p = { values: { password: 'pw-123456' }, submitted: true, hits: [], growth: [{ url: growthUrl, field: 'query:d' }], storage: [] };
+    return run(withProbe('/login', [ext(APP)], { destinations: [dest(url, { phase: 'probe' })], probe: p }, { sensitive: true }), appr).findings.filter((f) => f.kind === 'probe-exfil');
+  };
+  const pixel = at(`${SITE}/img/pixel.gif?d=xyz`, `${SITE}/img/pixel.gif`);
+  assert.deepEqual(pixel.map((f) => `${f.subject}:${f.severity}`), [`static ${SITE}/img/pixel.gif:high`]);
+  assert.match(pixel[0].reasons[0], /the query:d of a request/);
+  const c2 = at('https://c2.example/p?d=xyz', 'https://c2.example/p');
+  assert.match(c2[0].reasons[0], /the query:d of a request to GET https:\/\/c2\.example\/p/);
+});
+
+test('a second card field with another name on an approved form is a new field', () => {
+  const approvedField = { frame: 'top', form: 'POST /pay', field: 'cardnumber', kind: 'card', count: 1, pages: ['/checkout'], reason: 'r', approved: '2026-11-23' };
+  const fields = [{ frame: 'top', form: 'POST /pay', field: 'cardnumber', kind: 'card', count: 1 }, { frame: 'top', form: 'POST /pay', field: 'cc-extra', kind: 'card', count: 1 }];
+  const r = run(one('/checkout', { scripts: [ext(APP)], fields }, { sensitive: true }), approved({ scripts: [appEntry()], fields: [approvedField] }));
+  assert.deepEqual(r.findings.map((f) => f.key), [findingKey('new-field', 'top POST /pay cc-extra card', '*')]);
+});
+
+test('a frame approval covers its own origin only', () => {
+  const frames = [{ origin: 'https://evil.example', tracked: false, fieldKinds: ['card'] }];
+  const appr = approved({ scripts: [appEntry()], frames: [{ match: 'https://js.pay.example', fields: ['card'], pages: ['/checkout'], reason: 'r', approved: '2026-11-23' }] });
+  assert.deepEqual(kinds(run(one('/checkout', { scripts: [ext(APP)], frames }, { sensitive: true }), appr)), ['frame-field:high']);
+});
+
+test('a <meta> CSP stands in for the header only when the header is missing', () => {
+  const appr = approved({ scripts: [appEntry()], headers: { '**': { 'content-security-policy': "script-src 'self'" } } });
+  const at = (headers, meta) => {
+    const snap = one('/', { scripts: [ext(APP)], headers });
+    for (const v of snap.pages[0].profiles.desktop.visits) v.document.metaCsp = meta;
+    return kinds(run(snap, appr));
+  };
+  assert.deepEqual(at({ 'content-security-policy': "script-src 'self'" }, ["script-src 'self' https://cdn.new.example"]), []);
+  assert.deepEqual(at({}, ["script-src 'self' https://cdn.new.example"]), ['csp-source:medium']);
+});
+
+test('one peer connection is reported in the singular', () => {
+  const r = run(one('/support', { scripts: [ext(APP)], peers: 1 }), approved({ scripts: [appEntry()] }));
+  assert.match(r.findings[0].reasons[0], /^1 live peer connection \(WebRTC\)/);
+});
+
+test('a peer-connection allow covers only the pages it lists', () => {
+  const appr = approved({ scripts: [appEntry()], allow: [{ what: 'peer-connection', pages: ['/chat'], reason: 'r', approved: '2026-11-23' }] });
+  assert.deepEqual(kinds(run(one('/support', { scripts: [ext(APP)], peers: 1 }), appr)), ['peer-connection:high']);
+});
+
+test('a <link> host the page also shows without the probe stays Medium in the probe visit', () => {
+  const appr = approved({ scripts: [appEntry()] });
+  const scripts = [ext(APP)];
+  const p = { values: { card: '4111111111111111' }, submitted: true, hits: [], growth: [], storage: [] };
+  const linkHosts = ['fonts.example'];
+  const r = run(snapshot([{ path: '/', visits: [visit({ role: 'A', scripts, linkHosts }), visit({ role: 'B', scripts, linkHosts }), visit({ role: 'probe', scripts, linkHosts, probe: p })] }]), appr);
+  assert.deepEqual(kinds(r), ['new-destination:medium']);
 });

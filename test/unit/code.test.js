@@ -80,3 +80,35 @@ test('the template collapses data blobs in ordinary scripts', () => {
   assert.equal(templateOf(a).hash, templateOf(b).hash);
   assert.notEqual(templateOf(a).hash, templateOf(a.replace('render(products, cfg);', 'render(products, cfg); steal(cfg);')).hash);
 });
+
+test('data with named keys, negative numbers, negations and keywords collapses; an object holding a variable does not', () => {
+  const tpl = (cfg) => templateOf(`var cfg = ${cfg}; render(cfg);`).hash;
+  assert.equal(tpl('{theme: "dark", offset: -4, show: !0, last: null, open: true}'), tpl('{mode: 2}'));
+  assert.notEqual(tpl('{cb: done}'), tpl('{cb: 1}'));
+});
+
+test('a framework data script stops being data once another statement follows it', () => {
+  const data = 'window.__INITIAL_STATE__ = {"cart": [1, 2], "user": null};';
+  assert.equal(templateOf(data).dataGlobal, '__INITIAL_STATE__');
+  assert.equal(templateOf(`${data} document.forms[0].addEventListener("submit", function () { send(this); });`).dataGlobal, null);
+  // Statements inside a function that builds the data are not top-level statements.
+  assert.equal(templateOf('window.__NUXT__ = (function (a, b) { var c = {}; return {state: {cart: a}, user: b}; })([1, 2], "x");').dataGlobal, '__NUXT__');
+});
+
+test('a framework data script keeps its hosts and the code it hands to eval or a timer', () => {
+  const page = ({ cart = '[1]', host = 'cdn.shop.example', boot = 'init()' } = {}) => templateOf(`window.__INITIAL_STATE__ = {"cart": ${cart}, "cdn": "https://${host}/img/", "boot": setTimeout("${boot}", 10)};`).hash;
+  assert.equal(page(), page({ cart: '[1, 2, 3]' }));
+  assert.notEqual(page(), page({ host: 'evil.example' }));
+  assert.notEqual(page(), page({ boot: 'steal()' }));
+});
+
+test('literals after a timer call are masked again', () => {
+  assert.equal(templateOf('setTimeout("go()", 100); var price = 10;').hash, templateOf('setTimeout("go()", 100); var price = 20;').hash);
+});
+
+test('a template literal keeps the code it interpolates; one without interpolation is masked like a string', () => {
+  assert.notEqual(templateOf('el.textContent = `Hi ${user.name}`;').hash, templateOf('el.textContent = `Hi ${document.cookie}`;').hash);
+  assert.equal(templateOf('el.textContent = `Hello`;').hash, templateOf('el.textContent = `Goodbye`;').hash);
+  // A quoted string that merely contains "${" is text, like any other string.
+  assert.equal(templateOf('var label = "Total: ${amount}";').hash, templateOf('var label = "Sum: ${total}";').hash);
+});

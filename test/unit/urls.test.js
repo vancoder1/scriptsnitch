@@ -81,3 +81,12 @@ test('two scripts on one path are not volatility, and account keys are never mas
   const w = (cb) => `https://cdn.example/widget.js?cb=${cb}`;
   assert.deepEqual([...findVolatileParams([w('1'), w('2')], [w('3'), w('4')])], ['https://cdn.example/widget.js#cb']);
 });
+
+test('isBuildToken takes 8 to 40 characters and runs of up to five lowercase letters', () => {
+  const forty = 'Ab1'.repeat(13) + 'Z';
+  assert.equal(forty.length, 40);
+  assert.equal(isBuildToken(forty), true);
+  assert.equal(isBuildToken(`${forty}9`), false);
+  assert.equal(isBuildToken('Abcdef12'), true);
+  assert.equal(isBuildToken('Abcdefg1'), false);
+});

@@ -166,3 +166,64 @@ test('with no entry-slot history (a first or stateless run), the page\'s own bun
   assert.deepEqual(kinds(run(one('/', { scripts: [ext(bundle)] }), appr)), []);
   assert.deepEqual(kinds(run(one('/', { scripts: [ext(bundle), ext(`${SITE}/assets/evil-Zz9Yy8Xx.js`, { creator: bundle })] }), appr)), ['build-file:medium'], 'a file the page did not load directly still needs the chunk map or a deploy');
 });
+
+test('a new inline script on a page that is not sensitive says only that', () => {
+  const r = run(one('/', { scripts: [inline('d'.repeat(64))] }), approved({ scripts: [] }));
+  assert.deepEqual(r.findings.map((f) => f.reasons), [['a new inline script']]);
+});
+
+test('an in-place change says whether a build token or a version was reused', () => {
+  const own = approved({ scripts: [entry({ id: 'build', match: `${SITE}/assets/*.{token}.js`, trust: 'deploy' }), entry({ id: 'mz', match: `${SITE}/js/modernizr-{version}.min.js`, trust: 'deploy' })] });
+  const st = state();
+  st.sites[SITE] = { entrySlots: {}, marker: null, ownHashes: { [`${SITE}/assets/main.3f2a1c9b.js`]: H('old').slice(0, 12), [`${SITE}/js/modernizr-2.6.2.min.js`]: H('mz-old').slice(0, 12) }, inline: {}, deployTokens: [], seen: {}, domains: {}, domainCheck: null };
+  const r = run(one('/', { scripts: [ext(`${SITE}/assets/main.3f2a1c9b.js`, { hash: H('new') }), ext(`${SITE}/js/modernizr-2.6.2.min.js`, { hash: H('mz-skimmer') })] }), own, st);
+  assert.deepEqual(r.findings.map((f) => f.reasons[0]).sort(), ['the content changed at a file name that carries a build token', 'the content of version 2.6.2 changed in place']);
+});
+
+test('a hashed own file approved by its exact URL on a deploy entry is the baseline on first sight', () => {
+  const url = `${SITE}/assets/vendor-B7kQ0aRz.js`;
+  const appr = approved({ scripts: [entry({ id: 'vendor', match: url, trust: 'deploy' })] });
+  assert.deepEqual(kinds(run(one('/', { scripts: [ext(url, { creator: `${SITE}/js/app.js` })] }), appr)), []);
+});
+
+test('a bundle accepted on a first run without a deploy does not lend its token to a dropped file', () => {
+  const appr = approved({ scripts: [entry({ id: 'build', match: `${SITE}/assets/*-{token}.js`, trust: 'deploy' })] });
+  const bundle = `${SITE}/assets/index-B7kQ0aRz.js`;
+  const first = run(one('/', { scripts: [ext(bundle)] }), appr);
+  assert.deepEqual(first.state.sites[SITE].deployTokens, []);
+  const dropped = run(one('/', { scripts: [ext(bundle), ext(`${SITE}/assets/evil-B7kQ0aRz.js`, { creator: bundle })] }), appr, first.state);
+  assert.deepEqual(kinds(dropped), ['build-file:medium']);
+});
+
+test('an own file approved with origin trust is covered by that entry alone', () => {
+  const url = `${SITE}/js/widget.js`;
+  const appr = approved({ scripts: [entry({ id: 'widget', match: url, trust: 'origin' })] });
+  assert.deepEqual(kinds(run(one('/', { scripts: [ext(url, { hash: H('changed') })] }), appr)), []);
+});
+
+test('an approved origin loader lends no trust to a script it injects from another vendor', () => {
+  const loader = 'https://widgets.example/loader.js';
+  const r = run(one('/', { scripts: [ext(loader), ext('https://evil.example/x.js', { creator: loader })] }), approved({ scripts: [entry({ id: 'w', match: loader, trust: 'origin' })] }));
+  assert.deepEqual(kinds(r), ['new-origin:high']);
+  const google = 'https://www.google.com/recaptcha/api.js';
+  const g = run(one('/', { scripts: [ext(google), ext('https://evil.example/x.js', { creator: google })] }), approved({ scripts: [entry({ id: 'recaptcha', match: google, trust: 'origin' })] }));
+  assert.deepEqual(kinds(g), ['new-origin:high']);
+});
+
+test('trust is inherited only from a loader approved with origin trust', () => {
+  const loader = 'https://www.google.com/recaptcha/api.js';
+  const release = 'https://www.gstatic.com/recaptcha/releases/abc123/recaptcha__en.js';
+  const r = run(one('/', { scripts: [ext(loader), ext(release, { creator: loader })] }), approved({ scripts: [entry({ id: 'recaptcha', match: loader, trust: 'exact', sha256: [H(loader)] })] }));
+  assert.deepEqual(kinds(r), ['new-origin:high']);
+});
+
+test('a renamed hashed third-party file at an approved origin is a new slot, not a new version', () => {
+  const was = 'https://cdn.example/widget-B7kQ0aRz.js';
+  const r = run(one('/', { scripts: [ext('https://cdn.example/widget-C9xR1bTp.js')] }), approved({ scripts: [entry({ id: 'widget', match: was, trust: 'exact', sha256: [H(was)] })] }));
+  assert.deepEqual(kinds(r), ['new-slot:medium']);
+});
+
+test('a versioned script from an unapproved origin is a new origin, whatever else is approved', () => {
+  const r = run(one('/', { scripts: [ext('https://evil.example/lib@1.0.0/lib.js')] }), approved({ scripts: [jqEntry] }));
+  assert.deepEqual(kinds(r), ['new-origin:high']);
+});

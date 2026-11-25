@@ -61,4 +61,39 @@ test('growthFields flags a request field whose size grows with the input', () =>
   const after = [{ method: 'POST', url: 'https://evil.example/c?t=2', body: `d=${'B'.repeat(112)}&n=2` }];
   assert.deepEqual(growthFields(before, after, 48), [{ url: 'https://evil.example/c', field: 'd' }]);
   assert.deepEqual(growthFields(before, [{ method: 'POST', url: 'https://evil.example/c', body: `d=${'B'.repeat(66)}&n=2` }], 48), []);
+  // Exactly three quarters of the extra input is enough.
+  assert.deepEqual(growthFields(before, [{ method: 'POST', url: 'https://evil.example/c', body: `d=${'B'.repeat(100)}&n=2` }], 48), [{ url: 'https://evil.example/c', field: 'd' }]);
+});
+
+test('ibanValid checks the checksum, not only the shape', () => {
+  assert.equal(ibanValid('DE89 3704 0044 0532 0130 00'), true);
+  assert.equal(ibanValid('DE89 3704 0044 0532 0130 01'), false);
+});
+
+test('finds a value base64-encoded at every byte offset of a larger payload', () => {
+  // Not a run of repeated digits: a repeating value matches even a misaligned slice.
+  const card = '4929731562840417';
+  for (const prefix of ['c=', 'cc=', 'ccc=']) {
+    assert.deepEqual(findValues(Buffer.from(`${prefix}${card}&t=9`).toString('base64'), { card }), [{ kind: 'card', encoding: 'base64' }], prefix);
+  }
+});
+
+test('a six-character value is searched, base64-encoded too', () => {
+  const password = 'Pw9!xQ';
+  assert.deepEqual(findValues(Buffer.from(`{"p":"${password}"}`).toString('base64'), { password }), [{ kind: 'password', encoding: 'base64' }]);
+});
+
+test('finds a value URL-encoded once', () => {
+  const email = 'jane.doe+42@mail.test';
+  assert.deepEqual(findValues(`e=${encodeURIComponent(email)}`, { email }), [{ kind: 'email', encoding: 'url-encoded' }]);
+});
+
+test('only the sensitive kinds are searched for', () => {
+  assert.deepEqual(findValues('tel=+1 613 555 0199&a=12 Maple Street', { phone: '+1 613 555 0199', address: '12 Maple Street' }), []);
+});
+
+test('growthFields measures JSON fields one by one, and a body that is one JSON string as a whole', () => {
+  const at = (before, after) => growthFields([{ method: 'POST', url: 'https://evil.example/c', body: before }], [{ method: 'POST', url: 'https://evil.example/c', body: after }], 48);
+  assert.deepEqual(at(JSON.stringify({ d: 'A'.repeat(64), n: 1 }), JSON.stringify({ d: 'B'.repeat(112), n: 2 })), [{ url: 'https://evil.example/c', field: 'd' }]);
+  assert.deepEqual(at(JSON.stringify('A'.repeat(64)), JSON.stringify('B'.repeat(112))), [{ url: 'https://evil.example/c', field: '' }]);
 });

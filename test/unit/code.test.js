@@ -131,3 +131,18 @@ test('a line comment ends at every line terminator JavaScript knows, so nothing 
     assert.deepEqual(extractHostnames(hidden), ['evil.example'], JSON.stringify(sep));
   }
 });
+
+test('strings handed to other code sinks are code, not data', () => {
+  const differ = (a, b) => assert.notEqual(templateOf(a).hash, templateOf(b).hash, `${a} / ${b}`);
+  differ('el.setAttribute("onclick", "a()");', 'el.setAttribute("onclick", "steal()");');
+  differ('link.href = "javascript:a()";', 'link.href = "javascript:steal()";');
+  differ('window["eval"]("a()");', 'window["eval"]("steal()");');
+  differ('(0, eval)("a()");', '(0, eval)("steal()");');
+  assert.equal(templateOf('el.setAttribute("data-price", "19.99");').hash, templateOf('el.setAttribute("data-price", "25");').hash, 'an ordinary attribute value is data');
+});
+
+test('a price or a version in a string is data, an address is not', () => {
+  assert.equal(templateOf('var p = {"price": "19.99", "v": "1.2.3"}; show(p);').hash, templateOf('var p = {"price": "25.00", "v": "1.2.4"}; show(p);').hash);
+  assert.notEqual(templateOf('send("10.0.0.7");').hash, templateOf('send("10.0.0.8");').hash);
+  assert.notEqual(templateOf('send("api.shop.example");').hash, templateOf('send("api.evil.example");').hash);
+});

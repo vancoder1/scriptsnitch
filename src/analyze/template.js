@@ -10,7 +10,8 @@ const CODE_RUNNERS = new Set(['eval', 'Function', 'setTimeout', 'setInterval', '
 const HTML_PROPERTIES = new Set(['innerHTML', 'outerHTML', 'srcdoc']);
 const DATA_WORDS = new Set(['true', 'false', 'null', 'undefined']);
 const URL_LIKE = /^(?:[a-z][a-z0-9+.-]*:)?\/\/\S+$/i;
-const HOST_LIKE = /^[a-z0-9-]+(?:\.[a-z0-9-]+)+(?::\d+)?$/i;
+// A host name has a letter in its last label (a price such as "19.99" is not one), or is an IPv4 address.
+const HOST_LIKE = /^(?:[a-z0-9-]+(?:\.[a-z0-9-]+)*\.[a-z0-9-]*[a-z][a-z0-9-]*|\d{1,3}(?:\.\d{1,3}){3})(?::\d+)?$/i;
 
 export const isUrlOrHost = (value) => URL_LIKE.test(value) || HOST_LIKE.test(value);
 
@@ -149,8 +150,7 @@ export function templateOf(source) {
   const callStack = [];
   sig.forEach((t, i) => {
     if (t.type === 'punct' && t.value === '(') {
-      const before = sig[i - 1];
-      callStack.push(before?.type === 'ident' && CODE_RUNNERS.has(before.value));
+      callStack.push(runsCode(sig, i));
       out.push('(');
       return;
     }
@@ -166,13 +166,31 @@ export function templateOf(source) {
     if (isLiteral(t)) {
       const value = t.type === 'string' || t.type === 'template' ? stringValue(t) : null;
       if (value !== null && isUrlOrHost(value)) out.push(`S:${value}`);
-      else if (callStack.at(-1) === true || assignsHtml(sig, i)) out.push(`K:${t.value}`);
+      else if (callStack.at(-1) === true || assignsHtml(sig, i) || /^\s*javascript:/i.test(value ?? '')) out.push(`K:${t.value}`);
       else out.push('L');
       return;
     }
     out.push(t.value);
   });
   return { hash: sha256Hex(collapseData(out).join('\u0001')), dataGlobal: null };
+}
+
+// Whether the call opening at sig[i] runs code from its string arguments: eval and friends, also as
+// window['eval'](...) and (0, eval)(...), and setAttribute for an event handler or an address.
+const CODE_ATTRIBUTES = /^(?:on\w+|src|href|srcdoc|action|formaction)$/i;
+function runsCode(sig, i) {
+  const before = sig[i - 1];
+  if (before?.type === 'ident') {
+    if (CODE_RUNNERS.has(before.value)) return true;
+    const first = sig[i + 1];
+    return before.value === 'setAttribute' && (first?.type === 'string' || first?.type === 'template') && CODE_ATTRIBUTES.test(stringValue(first));
+  }
+  if (before?.value === ']' || before?.value === ')') {
+    const named = sig[i - 2];
+    const name = named?.type === 'ident' ? named.value : named?.type === 'string' ? stringValue(named) : null;
+    return CODE_RUNNERS.has(name);
+  }
+  return false;
 }
 
 function assignsHtml(sig, i) {

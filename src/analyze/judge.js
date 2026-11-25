@@ -101,6 +101,9 @@ function siteContext({ site, approved, status, snapshot, now, pages, includeVisi
   const visits = pages.flatMap((p) => Object.values(p.profiles).filter((r) => r?.conclusive).flatMap((r) => r.visits.filter((v) => v.conclusive && includeVisit(v))));
   const current = entrySlotsOf(visits, own);
   const currentMarker = snapshot.sites?.[site]?.deployMarker ?? null;
+  // A marker taken out of the config is forgotten; entry tokens show deploys again.
+  const markerSet = snapshot.sites?.[site]?.deployMarkerSet ?? currentMarker !== null;
+  if (!markerSet) st.marker = null;
   const evident = deployEvident({ previousEntrySlots: st.entrySlots, currentEntrySlots: current, previousMarker: st.marker, currentMarker });
   const inherited = new Map();
   const changed = new Set();

@@ -322,3 +322,14 @@ test('a new file in a Magento version folder needs a deploy, like a build-folder
   const deployed = run(page(1700000099, [ext(v(1700000099, 'checkout.js'), { creator: v(1700000099, 'requirejs/require.js') })]), appr, first.state);
   assert.deepEqual(kinds(deployed), [], 'a deploy moves the whole folder');
 });
+
+test('a deploy marker taken out of the config stops counting, and entry tokens show deploys again', () => {
+  const appr = approved({ scripts: [entry({ id: 'build', match: `${SITE}/assets/*-{token}.js`, trust: 'deploy' })] });
+  const st = state();
+  st.sites[SITE] = { entrySlots: { [`${SITE}/assets/index-{token}.js`]: 'B7kQ0aRz' }, marker: 'v1', ownHashes: {}, inline: {}, deployTokens: [], seen: {}, domains: {}, domainCheck: null };
+  const snap = one('/', { scripts: [ext(`${SITE}/assets/index-C9xR1bTp.js`), ext(`${SITE}/assets/evil-Zz9Yy8Xx.js`, { creator: `${SITE}/assets/index-C9xR1bTp.js` })] });
+  snap.sites[SITE] = { deployMarker: null, deployMarkerSet: false };
+  const r = run(snap, appr, st);
+  assert.deepEqual(kinds(r), [], 'the entry token changed: a deploy');
+  assert.equal(r.state.sites[SITE].marker, null, 'the old marker is forgotten');
+});

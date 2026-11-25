@@ -66,7 +66,7 @@ const spec = {
     format: req(int(1)),
     tool: req(str),
     run: req({ type: 'object', fields: { startedAt: req(str), finishedAt: req(str), chrome: req(str), drill: req(bool) } }),
-    sites: opt({ type: 'object', values: { type: 'object', fields: { deployMarker: req(nullable(str)) } } }, {}),
+    sites: opt({ type: 'object', values: { type: 'object', fields: { deployMarker: req(nullable(str)), deployMarkerSet: opt(bool, false) } } }, {}),
     pages: req({ type: 'array', items: { type: 'object', fields: {
       name: req(str), site: req(str), path: req(str), url: req(str), sensitive: req(bool),
       profiles: req({ type: 'object', fields: { desktop: opt(profile), mobile: opt(profile) } }),

@@ -216,7 +216,8 @@ export async function collect({ config, approved, outDir, executable, allowNoSan
     const sites = {};
     for (const origin of new Set(config.pages.map((p) => p.site))) {
       const marker = config.sites[origin]?.deployMarker;
-      sites[origin] = { deployMarker: marker ? await readDeployMarker(origin, marker) : null };
+      // Whether a marker is set up at all: a value that could not be read is not a marker taken away.
+      sites[origin] = { deployMarker: marker ? await readDeployMarker(origin, marker) : null, deployMarkerSet: Boolean(marker) };
     }
     const checks = await crossCheck([...crossItems.values()], { fetchImpl });
     const snapshot = {

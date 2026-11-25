@@ -49,6 +49,19 @@ test('masks per-visit query parameters so both visits name the script the same w
   assert.equal(new URL(urls[0]).searchParams.get('id'), 'W1');
 });
 
+test('a sourceURL name gives no identity, and inline scripts stay inline after replaceState', async (t) => {
+  if (!executable) return t.skip('no Chrome');
+  await site.setScenario('source-url');
+  const snap = await run(config([home()], { profiles: ['desktop'] }));
+  const scripts = snap.pages[0].profiles.desktop.visits[0].scripts;
+  const lib = scripts.filter((s) => s.ref.url?.endsWith('/lib.min.js'));
+  assert.equal(lib.length, 1, 'only the real library carries its URL');
+  assert.equal(lib[0].kind, 'external');
+  assert.ok(!scripts.some((s) => s.ref.url && !/^https?:/.test(s.ref.url)), 'no script is named by a bundler-style sourceURL');
+  assert.ok(!scripts.some((s) => s.kind === 'external' && s.ref.url?.includes('shop.test') && !s.ref.url.includes('/assets/')), 'no inline script is taken for an own file');
+  assert.ok(scripts.filter((s) => s.kind === 'inline').length >= 5);
+});
+
 test('makes a confirmation visit when something unapproved appears in only one visit', async (t) => {
   if (!executable) return t.skip('no Chrome');
   await site.setScenario('intermittent');

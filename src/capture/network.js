@@ -8,6 +8,7 @@ export function createNetLog(ctx) {
   const sockets = new Map();
   const frames = [];
   const transports = [];
+  const sameDocumentUrls = new Set();
   let lastActivity = Date.now();
   let phase = 'load';
   const touch = () => { lastActivity = Date.now(); };
@@ -53,6 +54,8 @@ export function createNetLog(ctx) {
   ctx.on('Network.webSocketFrameSent', (p) => {
     frames.push({ requestId: p.requestId, payload: p.response?.payloadData ?? '' });
   });
+  // history.pushState and replaceState: inline scripts parsed before carry the earlier address.
+  ctx.on('Page.navigatedWithinDocument', (p) => { if (p.url) sameDocumentUrls.add(p.url); });
   ctx.on('Network.webTransportCreated', (p, sessionId) => {
     touch();
     transports.push({ url: p.url, initiator: p.initiator ?? null, sessionId, phase });
@@ -65,7 +68,7 @@ export function createNetLog(ctx) {
     transports,
     lastActivity: () => lastActivity,
     setPhase(p) { phase = p; },
-    reset() { requests.clear(); sockets.clear(); frames.length = 0; transports.length = 0; touch(); },
+    reset() { requests.clear(); sockets.clear(); frames.length = 0; transports.length = 0; sameDocumentUrls.clear(); touch(); },
     // Requests still open, ignoring streams and anything open longer than longPollMs.
     inFlight(longPollMs) {
       const now = Date.now();
@@ -82,6 +85,12 @@ export function createNetLog(ctx) {
         if (r.url === url && r.type === 'Script' && (sessionId === undefined || r.sessionId === sessionId) && !r.failed) found = r;
       }
       return found;
+    },
+    // Every address a document in the visit had: where it was fetched, and where pushState moved it.
+    documentUrls() {
+      const urls = new Set(sameDocumentUrls);
+      for (const r of requests.values()) if (r.type === 'Document') urls.add(r.url);
+      return urls;
     },
     destinationRequests() {
       return [...requests.values()].filter((r) => !NOT_DESTINATIONS.has(r.type) && !/^(data|blob):/i.test(r.url));

@@ -25,6 +25,7 @@ export function createScriptLog(ctx) {
       frameId: p.executionContextAuxData?.frameId ?? null,
       wasm: p.scriptLanguage === 'WebAssembly',
       module: Boolean(p.isModule),
+      sourceURL: Boolean(p.hasSourceURL),
     });
   });
   return {
@@ -42,11 +43,24 @@ const firstScriptId = (stack) => {
   return null;
 };
 
+const isWebUrl = (url) => /^https?:\/\//i.test(url);
+// Response text the way Chrome decoded it, for comparing with the parsed source.
+const asText = (bytes) => bytes.toString('utf8').replace(/^\uFEFF/, '');
+
 // Builds the visit's script entries. `docUrls` maps sessionId -> set of document URLs in that session
-// (inline scripts carry their document's URL). `isTracked(entry)` filters third-party frames.
+// (inline scripts carry their document's URL); `netLog.documentUrls()` adds the addresses the
+// documents were fetched at, which history.pushState may have changed since. `isTracked(entry)`
+// filters third-party frames.
 export async function buildScripts(ctx, scriptLog, netLog, { frameOf, docUrls, isTracked, cache }) {
   const byId = new Map();
   const entries = [];
+  const fetchedDocs = netLog.documentUrls?.() ?? new Set();
+  const bodyOf = async (req) => {
+    const cached = cache.bodies.get(req.requestId);
+    const bytes = cached ?? (await ctx.send('Network.getResponseBody', { requestId: req.requestId }, req.sessionId).then((b) => Buffer.from(b.body, b.base64Encoded ? 'base64' : 'utf8'), () => null));
+    if (bytes) cache.bodies.set(req.requestId, bytes);
+    return bytes;
+  };
   for (const p of scriptLog.parsed) {
     const frame = frameOf(p);
     if (!isTracked(p, frame)) continue;
@@ -58,24 +72,25 @@ export async function buildScripts(ctx, scriptLog, netLog, { frameOf, docUrls, i
     }
     if (source === null || isInternal(source)) continue;
     const creatorId = firstScriptId(p.stack);
+    // Chrome reports a `//# sourceURL=` name as the script's URL, and any script can give itself
+    // one: an inline skimmer naming itself after an approved file would take that file's identity
+    // (and its hash, from the real request). The name counts only for the file that was fetched at
+    // that address with exactly this text; otherwise the script is judged as what it is.
+    let req = isWebUrl(p.url) ? netLog.scriptRequest(p.url, p.sessionId) : null;
+    let bytes = req ? await bodyOf(req) : null;
+    if (p.sourceURL && !(bytes && asText(bytes) === source)) { req = null; bytes = null; }
     let kind;
     if (p.wasm || /^(blob|data):/i.test(p.url)) kind = 'code';
     else if (creatorId) kind = 'code';
     else if (!p.url) kind = 'code';
-    else if (docUrls.get(p.sessionId)?.has(p.url)) kind = 'inline';
+    else if (req) kind = 'external';
+    else if (p.sourceURL || !isWebUrl(p.url) || docUrls.get(p.sessionId)?.has(p.url) || fetchedDocs.has(p.url)) kind = 'inline';
     else kind = 'external';
 
     const entry = { p, kind, source, frame, creatorId, request: null };
     if (kind === 'external') {
-      const req = netLog.scriptRequest(p.url, p.sessionId);
       entry.request = req;
       if (req?.initiator?.stack) entry.creatorId = firstScriptId(req.initiator.stack);
-      let bytes = null;
-      if (req) {
-        const cached = cache.bodies.get(req.requestId);
-        bytes = cached ?? (await ctx.send('Network.getResponseBody', { requestId: req.requestId }, req.sessionId).then((b) => Buffer.from(b.body, b.base64Encoded ? 'base64' : 'utf8'), () => null));
-        if (bytes) cache.bodies.set(req.requestId, bytes);
-      }
       bytes ??= Buffer.from(source, 'utf8');
       entry.ref = { url: p.url, contentHash: sha256Hex(bytes), template: null };
       entry.sri = `sha384-${sha384Base64(bytes)}`;

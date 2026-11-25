@@ -55,7 +55,9 @@ function queryVersion(searchParams) {
 // kind: 'code' (blob:, data:, wasm:), 'hashed', 'versioned' or 'floating'.
 export function classifyUrl(url) {
   if (/^(blob|data|wasm):/i.test(url)) return { kind: 'code' };
-  const u = new URL(url);
+  // URLs come from the page; one that does not parse has no token or version to find.
+  const u = URL.parse(url);
+  if (!u) return { kind: 'floating' };
   const filename = u.pathname.split('/').pop() || '';
   const qv = queryVersion(u.searchParams);
   const extra = qv ? { queryVersion: qv.value } : {};
@@ -75,7 +77,8 @@ function query(searchParams, versionParam) {
 // The URL with the build token or version replaced by a placeholder, and query parameters sorted.
 export function slotOf(url, classification = classifyUrl(url)) {
   if (classification.kind === 'code') return url.split(':')[0] + ':';
-  const u = new URL(url);
+  const u = URL.parse(url);
+  if (!u) return url;
   let path = u.pathname;
   if (classification.kind === 'hashed') {
     const at = path.lastIndexOf(classification.token);

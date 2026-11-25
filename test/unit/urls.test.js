@@ -90,3 +90,10 @@ test('isBuildToken takes 8 to 40 characters and runs of up to five lowercase let
   assert.equal(isBuildToken('Abcdef12'), true);
   assert.equal(isBuildToken('Abcdefg1'), false);
 });
+
+test('a URL that does not parse is classified, never thrown on', () => {
+  for (const url of ['x', 'webpack://shop/src/x.js', '']) {
+    assert.equal(classifyUrl(url).kind, 'floating', url);
+    assert.equal(typeof slotOf(url), 'string', url);
+  }
+});

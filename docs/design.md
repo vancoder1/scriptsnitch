@@ -358,9 +358,10 @@ token. Slots let findings say "upgraded from 3.7.1 to 3.8.0" instead of "unknown
 **Deploy evidence and build folders.** An own script slot that a page's HTML loads directly is an
 *entry slot*. A deploy is evident for a site in a run when an entry slot that existed in the previous
 run now has a different build token, path version or query version (a replacement; a newly added
-entry slot is not evidence, it is a new script), or when the site's `deployMarker` value changed. Sites
-without hashed file names or query versions show deploy evidence only through a `deployMarker`; the
-README says so.
+entry slot is not evidence, it is a new script), or when the site's `deployMarker` value changed. With
+a `deployMarker` set up, only the marker counts: anyone who can edit the HTML can change an entry
+token. Sites without hashed file names or query versions show deploy evidence only through a
+`deployMarker`; the README says so.
 
 A `deploy` entry can approve a whole build folder (`https://shop.example/assets/*.{token}.js`). A new
 hashed file there is accepted when either its build token appears in the source of an accepted own
@@ -395,7 +396,8 @@ nonces and translations change the data, not the template; added code, a swapped
   the HTML. Its creator is recorded for the explanation. A script that an approved `origin` script
   injects from that script's own origin, or from a domain of the same vendor (vendor families from the
   vendored third-party-web entity list), inherits the injector's `origin` trust: reCAPTCHA's rotating
-  release files and Google Maps' versioned chunks then never alert on their own.
+  release files and Google Maps' versioned chunks then never alert on their own. Nothing inherits onto
+  a host that serves anyone's files (cloud storage, tenant subdomains), whoever runs it.
 - *Code without a URL* (`eval`, `new Function`, inline script elements appended at runtime, `blob:`
   and `data:` scripts, WebAssembly) is attributed to the script that created it, using the stack trace
   from `scriptParsed` and the `Network` initiator. Its listeners, input-time code, destinations and
@@ -651,7 +653,9 @@ change. Stale approvals (section 9) are housekeeping proposals, not findings.
 of them is a behaviour sign (peer connections, which have no owning script, do not count), all of
 that script's findings are raised to High (and so become pending).
 
-**First run.** With no approved file, or none for a site, the first run proposes the whole inventory.
+**First run.** With no approved file, or none for a site, and no open approval pull request for it,
+the first run proposes the whole inventory; once that pull request exists, what appears is proposed as
+anything new is.
 Because everything would otherwise be a High `new-origin`, the first run uses a different split: every
 entry is routine except those risky in themselves, which are pending: `receives`, sensitive fields in
 the top page or a tracked frame, frames with sensitive fields, listeners on a field, form or submit
@@ -689,8 +693,9 @@ document's status is 400 or more; the page ended up on an origin that is not an 
 page has an approved own script, the default is "at least one of the page's approved own scripts
 loaded", which an error page usually fails and a skimmer has no reason to break, unlike the payment
 iframe it may hide); a known bot challenge or queue page is detected (for example
-`cf-mitigated: challenge`, "Just a moment...", and a small list of other vendors' signatures); or the
-load timed out. Inconclusive visits produce no findings and resolve nothing; the other profile of the
+`cf-mitigated: challenge`, "Just a moment...", and a small list of other vendors' signatures), which
+counts only when the visit saw neither the expected content nor any approved own script, since a page
+can plant a title or a captcha script itself; the load timed out; or the visit passed its deadline. Inconclusive visits produce no findings and resolve nothing; the other profile of the
 same page still reports. Three inconclusive runs in a row for a page and profile raise a comment on
 the status issue.
 
@@ -764,7 +769,8 @@ path. Rules:
   listed again without a new comment.
 - A High finding that stops appearing stays listed as "not seen since <date>" until a person closes
   the issue after investigating (attackers remove skimmers to cover their tracks; approving something
-  that is gone means nothing).
+  that is gone means nothing). So does a High raised under a `deploy` entry (`build-file`,
+  `new-inline`) that a later deploy accepted rather than an approval.
 - The issue closes itself when nothing live is unapproved and no High finding is waiting.
 - Closing the issue by hand mutes the findings in it. A new finding key reopens the same issue with
   a comment; muted findings stay listed in a collapsed section, so the history stays in one place.
@@ -1230,3 +1236,32 @@ made against this document's intent and is covered by tests.
   (`job.workflow_sha`), so the workflow and the action always match, before and after a release.
 - **Evidence pack (section 12).** Approvals come from comparing whole versions of the approved file in
   git, so moving an item from `pending` into the live file shows as the approval it is.
+
+From the release review:
+
+- **Script identity (section 7).** A `//# sourceURL=` name is no identity: Chrome reports it as the
+  script's URL, so it counts only for the file fetched at that address with exactly that text. Inline
+  scripts are also recognised by the addresses their document was fetched at and moved to with
+  `history.pushState`.
+- **Own files (sections 8 and 9).** An own file is known by its origin and path, plus a query version,
+  whatever other parameters it is loaded with; a file whose variants differ by a parameter keeps the
+  hashes of each. A new build file is vouched for only by a script known before the run or the entry
+  file of a known slot, never by another new file. Next.js build directories are build tokens and
+  Magento's `version<digits>` directories path versions.
+- **Account keys (section 8).** A key parameter given twice matches no pattern and its key is all its
+  values; paths are matched with unreserved percent-escapes decoded.
+- **The probe (section 11).** The growth test compares the largest size of each field per endpoint, and
+  endpoints mask the ids a session puts in a path. From the moment the network is held the proxy opens
+  no new connection and looks up no name, and a page or frame whose hold cannot be set up stops the
+  probe.
+- **Hostile text and sizes (sections 6 and 12).** Markers count only at the top of a body. Table cells
+  escape pipes. Subjects and reasons made of page text are bounded (start and hash), the site marker
+  and the text are fitted to GitHub's body limit, the approval pull request names its findings by key
+  digests, and own-file hashes are kept by a digest of the identity. Evidence paths are fixed by their
+  hash.
+- **GitHub (section 12).** The approval pull request is only one whose branch is in this repository and
+  named for the site; commits by `[bot]` accounts are the bot's (GitHub App tokens included). A failure
+  writing it falls back to the issue, and a proposal the approved file could not read back is left out
+  with a note. Only reads are retried.
+- **Configuration (section 15).** Duplicate keys and two pages on one path are refused; `notify` takes
+  teams as `org/team`.

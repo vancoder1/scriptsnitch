@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { inconclusiveReason } from '../../src/capture/inconclusive.js';
 import { createEvidenceStore } from '../../src/capture/evidence.js';
 import { crossCheck } from '../../src/capture/crosscheck.js';
+import { createHash } from 'node:crypto';
 import { sha256Hex } from '../../src/util/hash.js';
 
 const page = { site: 'https://shop.example', path: '/', expect: null };
@@ -82,4 +83,25 @@ test('the cross-check compares only 200 JavaScript responses, sent with the refe
     ['same.js', true, null], ['403.js', null, 'direct fetch answered 403'], ['html.js', null, 'direct fetch returned text/html, not JavaScript'], ['cloaked.js', false, null],
   ]);
   assert.equal(calls[0][1], 'https://shop.example/');
+});
+
+test('the cross-check decodes a direct download as Chrome does: a byte-order mark or another charset is no cloaking', async () => {
+  // Chrome hands over a text response decoded, so its hash is of the UTF-8 text, without the BOM.
+  const text = 'var café = 1;';
+  const answers = {
+    'bom.js': [Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(text)]), 'application/javascript'],
+    'latin.js': [Buffer.from(text, 'latin1'), 'application/javascript; charset=windows-1252'],
+  };
+  const fetchImpl = async (url) => { const [body, type] = answers[url.split('/').pop()]; return new Response(body, { status: 200, headers: { 'content-type': type } }); };
+  const out = await crossCheck(Object.keys(answers).map((name) => ({ url: `https://cdn.example/${name}`, chromeHash: sha256Hex(Buffer.from(text)), referer: null })), { fetchImpl });
+  assert.deepEqual(out.map((c) => c.directHash === c.chromeHash), [true, true]);
+  // The integrity value a page would need is of the bytes as served.
+  assert.equal(out[0].sri, `sha384-${createHash('sha384').update(answers['bom.js'][0]).digest('base64')}`);
+});
+
+test('the cross-check does not download a file larger than any script', async () => {
+  const fetchImpl = async () => new Response(new Uint8Array(12 * 1024 * 1024), { status: 200, headers: { 'content-type': 'application/javascript' } });
+  const [c] = await crossCheck([{ url: 'https://cdn.example/huge.js', chromeHash: 'a'.repeat(64), referer: null }], { fetchImpl });
+  assert.equal(c.directHash, null);
+  assert.match(c.note, /too large/);
 });

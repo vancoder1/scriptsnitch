@@ -104,11 +104,12 @@ function judgeExternal(ctx, page, profile, url, observations, visits) {
   const isOwn = own.has(origin);
   const cls = classifyUrl(url);
   const slot = slotOf(url, cls);
-  const data = { url, slot, hash: obs.ref.contentHash, hashes, sri: obs.sri, origin, page: page.path, sensitive: page.sensitive, own: isOwn, kind: cls.kind, creator: obs.creator?.url ?? null };
+  // Integrity is of the bytes as served: the cross-check has them; Chrome hands over decoded text.
+  const check = snapshot.crossCheck.find((c) => c.url === url);
+  const data = { url, slot, hash: obs.ref.contentHash, hashes, sri: check?.sri ?? obs.sri, origin, page: page.path, sensitive: page.sensitive, own: isOwn, kind: cls.kind, creator: obs.creator?.url ?? null };
 
   const covering = coveringScripts({ url, template: null }, section, page.path, page.sensitive);
   // A file that legitimately differs by browser is approved with origin trust (design §10).
-  const check = snapshot.crossCheck.find((c) => c.url === url);
   if (check?.directHash && check.directHash !== check.chromeHash && !covering.some((e) => e.trust === 'origin')) {
     ctx.add({ ...base, kind: 'cloaking', subject: url, severity: 'high', reasons: ['Chrome received different bytes than a direct download of the same file'], evidence: [check.chromeHash], data });
   }

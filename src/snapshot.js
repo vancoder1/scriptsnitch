@@ -71,7 +71,7 @@ const spec = {
       name: req(str), site: req(str), path: req(str), url: req(str), sensitive: req(bool),
       profiles: req({ type: 'object', fields: { desktop: opt(profile), mobile: opt(profile) } }),
     } } }),
-    crossCheck: req({ type: 'array', items: { type: 'object', fields: { url: req(str), chromeHash: req(hex64), directHash: req(nullable(hex64)), note: req(nullable(str)) } } }),
+    crossCheck: req({ type: 'array', items: { type: 'object', fields: { url: req(str), chromeHash: req(hex64), directHash: req(nullable(hex64)), sri: opt(nullable(str), null), note: req(nullable(str)) } } }),
     evidence: req({ type: 'object', values: { type: 'object', fields: { file: req(str), url: req(nullable(str)), bytes: req(int()) } } }),
   },
 };

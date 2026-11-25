@@ -12,7 +12,7 @@ export const LABEL = 'scriptsnitch';
 const ALERT_STREAK = 3;
 
 export async function readStatus(github) {
-  const issues = (await github.listIssues({ labels: LABEL, state: 'all' })).filter((i) => readMarker(i.body, 'status'));
+  const issues = (await github.listIssues({ labels: LABEL, state: 'all' })).filter((i) => i.title === STATUS_TITLE && readMarker(i.body, 'status'));
   issues.sort((a, b) => Number(a.state === 'open') - Number(b.state === 'open') || a.number - b.number);
   const issue = issues.at(-1) ?? null;
   return { issue, state: issue ? { ...emptyStatusState(), ...readMarker(issue.body, 'status') } : emptyStatusState() };

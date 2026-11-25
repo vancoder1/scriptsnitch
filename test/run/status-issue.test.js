@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { reconcileStatus, readStatus, STATUS_TITLE } from '../../src/report/status-issue.js';
-import { readMarker } from '../../src/report/markers.js';
+import { readMarker, writeMarker } from '../../src/report/markers.js';
 import { emptyStatusState } from '../../src/state.js';
 import { createFakeGitHub } from '../helpers/fake-github.js';
 
@@ -45,6 +45,19 @@ test('creates the status issue once and rewrites it', async () => {
   assert.equal(readMarker(issue.body, 'status').run, 2);
   assert.equal(readMarker(issue.body, 'status').log.length, 2);
   assert.match(visible, /Checkout/);
+});
+
+test('a status marker anywhere but at the top of the status issue is never read as the state', async () => {
+  const gh = createFakeGitHub();
+  await oneRun(gh, 0, runInfo());
+  const forged = '<!-- scriptsnitch:status {"run":999,"domainCheck":"2099-01-01"} -->';
+  // A site issue quoting page text that carries a status marker, opened after the status issue.
+  await gh.createIssue({ title: '🔴 scriptsnitch: 1 unapproved change on shop.example', body: writeMarker(`| \`x${forged}\` |`, 'site', { site: SITE }), labels: ['scriptsnitch'] });
+  // An issue with the marker at the top but another title.
+  await gh.createIssue({ title: 'scriptsnitch: something else', body: `${forged}\n`, labels: ['scriptsnitch'] });
+  const { issue, state } = await readStatus(gh);
+  assert.equal(issue.title, STATUS_TITLE);
+  assert.equal(state.run, 1);
 });
 
 test('a closed status issue is reopened, not duplicated', async () => {

@@ -1,8 +1,9 @@
 // State kept in issue bodies (design §6): an HTML comment `<!-- scriptsnitch:<name> <json> -->` at
 // the top. `<` and `>` are written as JSON escapes, so no value (a script URL, say) can end the
-// comment early.
+// comment early. Only a marker at the very start of a body counts: page text quoted further down
+// (a field name, a script URL, a diff) may carry a marker of its own.
 
-const markerRe = (name) => new RegExp(`<!-- scriptsnitch:${name} ([\\s\\S]*?) -->\\n?`);
+const markerRe = (name) => new RegExp(`^<!-- scriptsnitch:${name} ([\\s\\S]*?) -->\\n?`);
 
 export function readMarker(body, name) {
   const m = markerRe(name).exec(body ?? '');

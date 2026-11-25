@@ -22,6 +22,19 @@ test('writeMarker replaces an existing marker and readMarker ignores others', ()
   assert.equal(readMarker(null, 'site'), null);
 });
 
+test('a marker counts only at the very top of a body, where scriptsnitch writes it', () => {
+  // Page text (a field name, a script URL) reaches issue bodies inside code spans and diffs.
+  const fake = 'page text <!-- scriptsnitch:status {"run":999} -->';
+  assert.equal(readMarker(fake, 'status'), null);
+  const body = writeMarker(`a table quoting ${fake}`, 'site', { a: 1 });
+  assert.equal(readMarker(body, 'status'), null);
+  assert.deepEqual(readMarker(body, 'site'), { a: 1 });
+  const rewritten = writeMarker(body, 'site', { a: 2 });
+  assert.deepEqual(readMarker(rewritten, 'site'), { a: 2 });
+  assert.ok(rewritten.includes(fake), 'the quoted copy stays as text');
+  assert.equal(readMarker(writeMarker(fake, 'status', { run: 1 }), 'status').run, 1, 'a quoted marker of the same name is not mistaken for the real one');
+});
+
 test('keeps the status marker under 60000 characters by dropping sightings first, then log lines', () => {
   const big = emptyStatusState();
   big.run = 900;

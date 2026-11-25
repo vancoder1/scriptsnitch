@@ -1,0 +1,5 @@
+# Findings gitleaks reports that are not secrets. One fingerprint per line: commit:file:rule:line.
+# A made-up Next.js build id in a test, written as `token: '...'`.
+658e7208315a3601f82be4105dad6a9f2967a546:test/unit/urls.test.js:generic-api-key:103
+# The RFC 6238 test-vector key ("12345678901234567890" in base32), published in the RFC.
+a19199b3ad4e267bb752a0070688c4c20d3801ba:test/unit/util.test.js:generic-api-key:33

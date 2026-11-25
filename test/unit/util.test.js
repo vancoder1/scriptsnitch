@@ -36,9 +36,9 @@ test('sha256Hex and sha384Base64 match known digests', () => {
 });
 
 test('totp matches the RFC 6238 SHA-1 test vectors', () => {
-  const secret = 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ';
+  const rfcSeed = 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ'; // base32 of "12345678901234567890", RFC 6238 appendix B
   const want = [[59, '94287082'], [1111111109, '07081804'], [1111111111, '14050471'], [1234567890, '89005924'], [2000000000, '69279037'], [20000000000, '65353130']];
-  for (const [t, code] of want) assert.equal(totp(secret, t * 1000, { digits: 8 }), code, `t=${t}`);
+  for (const [t, code] of want) assert.equal(totp(rfcSeed, t * 1000, { digits: 8 }), code, `t=${t}`);
 });
 
 test('totp defaults to six digits', () => {

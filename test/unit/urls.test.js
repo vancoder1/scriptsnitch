@@ -99,8 +99,9 @@ test('a URL that does not parse is classified, never thrown on', () => {
 });
 
 test('build ids in directories: Next.js and Magento', () => {
-  const next = 'https://shop.example/_next/static/aB3dE5fG7hJ9kL1mN3pQ5/_buildManifest.js';
-  assert.deepEqual(classifyUrl(next), { kind: 'hashed', token: 'aB3dE5fG7hJ9kL1mN3pQ5' });
+  const buildId = 'aB3dE5fG7hJ9kL1mN3pQ5';
+  const next = `https://shop.example/_next/static/${buildId}/_buildManifest.js`;
+  assert.deepEqual(classifyUrl(next), { kind: 'hashed', token: buildId });
   assert.equal(slotOf(next), 'https://shop.example/_next/static/{token}/_buildManifest.js');
   assert.equal(classifyUrl('https://shop.example/_next/static/chunks/main.js').kind, 'floating', 'chunks is a folder, not a build id');
   const magento = 'https://shop.example/static/version1700000000/frontend/Magento/luma/en_US/requirejs/require.js';

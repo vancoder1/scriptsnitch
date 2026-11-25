@@ -367,6 +367,8 @@ Common options: `--config`, `--out`, `--chrome`.
   status issue's first line says when the last run was.
 - Sites without hashed file names show deploys only through a `deployMarker`; without one, every
   change to an own file on a sensitive page is reported.
+- In a version folder (Magento's `/static/version…/`) every file shares the version, so a script first
+  loaded between deploys is reported as a new build file; the next deploy, or approving it, settles it.
 - The CLI's `check` is stateless: no deploy history and no cross-run confirmation.
 - It detects; it does not block. A compromised collect job could hide findings.
 

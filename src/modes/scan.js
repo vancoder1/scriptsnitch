@@ -106,13 +106,38 @@ async function discover(urls, { executable, allowNoSandbox, extraArgs, env }) {
   return found;
 }
 
+// One page per path, the first found: findings, state and the sensitive-page rule are kept per path,
+// and the config refuses two pages on one (/login and /login?next=...).
+export function onePerPath(urls) {
+  const seen = new Set();
+  return urls.filter((url) => {
+    const u = new URL(url);
+    const at = `${u.origin}${u.pathname}`;
+    if (seen.has(at)) return false;
+    seen.add(at);
+    return true;
+  });
+}
+
+// Page names must be unique: a title two pages share gets the page's path after it.
+export function uniqueNames(pages) {
+  const used = new Set();
+  return pages.map((p) => {
+    let name = p.name;
+    if (used.has(name)) name = `${p.name} (${new URL(p.url).pathname})`;
+    for (let n = 2; used.has(name); n++) name = `${p.name} (${n})`;
+    used.add(name);
+    return { ...p, name };
+  });
+}
+
 export async function init(urls, { cwd, executable, allowNoSandbox = false, extraArgs = [], env = process.env, fetchImpl = fetch, force = false, now = Date.now }) {
   const dir = join(cwd, 'scriptsnitch');
   const configPath = join(dir, 'config.json');
   const approvedPath = join(dir, 'approved.json');
   if (!force && (existsSync(configPath) || existsSync(approvedPath))) throw new InitError(`${configPath} or ${approvedPath} already exists; init never overwrites them (use --force to replace both)`);
   const given = urls.map((u) => { const x = new URL(u); x.hash = ''; return x.href; });
-  const all = [...new Set([...given, ...(await discover(given, { executable, allowNoSandbox, extraArgs, env }))])];
+  const all = onePerPath([...new Set([...given, ...(await discover(given, { executable, allowNoSandbox, extraArgs, env }))])]);
   const config = parseConfig(JSON.stringify({ profiles: ['desktop'], pages: all.map((url) => ({ name: url, url })) }), 'init');
   const snapshot = await withTempDir((outDir) => collect({ config, approved: emptyApproved(), outDir, executable, allowNoSandbox, env, extraArgs, fetchImpl, now }));
   for (const p of snapshot.pages) p.sensitive = hasSensitiveFields(judgedVisits(p));
@@ -120,10 +145,10 @@ export async function init(urls, { cwd, executable, allowNoSandbox = false, extr
   const proposals = proposalsFor([...result.findings, ...result.held], emptyApproved(), { now: now(), headers: result.headers });
   let approved = emptyApproved();
   for (const site of new Set(snapshot.pages.map((p) => p.site))) approved = applyProposals(approved, site, proposals.filter((p) => p.site === site));
-  const pages = snapshot.pages.map((p) => {
+  const pages = uniqueNames(snapshot.pages.map((p) => {
     const title = judgedVisits(p)[0]?.document.title?.trim();
     return { name: title || new URL(p.url).pathname, url: p.url, ...(p.sensitive ? { sensitive: true } : {}) };
-  });
+  }));
   mkdirSync(dir, { recursive: true });
   writeFileSync(configPath, `${JSON.stringify({ approved: 'scriptsnitch/approved.json', pages }, null, 2)}\n`);
   writeFileSync(approvedPath, serializeApproved(approved));

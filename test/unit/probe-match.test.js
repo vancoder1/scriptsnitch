@@ -103,3 +103,9 @@ test('growthFields compares the largest of each field on both sides, not whichev
   assert.deepEqual(growthFields([op('Cart', 2000), op('Menu', 500)], [op('Menu', 500), op('Cart', 2000)], 48), []);
   assert.deepEqual(growthFields([op('Cart', 2000), op('Menu', 500)], [op('Menu', 500), op('Cart', 2100)], 48), [{ url: 'https://shop.example/graphql', field: 'query' }]);
 });
+
+test('growthFields compares GraphQL operations one by one: one only the second probe made is not growth', () => {
+  const op = (name, size) => ({ method: 'POST', url: 'https://shop.example/graphql', body: JSON.stringify({ operationName: name, query: 'q'.repeat(size) }) });
+  assert.deepEqual(growthFields([op('Menu', 500)], [op('Menu', 500), op('Cart', 2000)], 48), []);
+  assert.deepEqual(growthFields([op('Login', 500)], [op('Login', 560)], 48), [{ url: 'https://shop.example/graphql', field: 'query' }]);
+});

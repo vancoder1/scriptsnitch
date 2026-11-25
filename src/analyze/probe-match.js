@@ -118,6 +118,11 @@ function fieldsOf(request) {
   return out;
 }
 
+// A GraphQL request names its operation: different operations on one endpoint are not one request.
+function operationOf(r) {
+  try { const op = JSON.parse(r.body ?? '')?.operationName; return typeof op === 'string' ? op : ''; } catch { return ''; }
+}
+
 const endpoint = (r) => { try { const u = new URL(r.url); return `${r.method} ${u.origin}${u.pathname}`; } catch { return `${r.method} ${r.url}`; } };
 
 // The largest size of each field, per endpoint, over a probe's requests. One endpoint carries several
@@ -125,7 +130,7 @@ const endpoint = (r) => { try { const u = new URL(r.url); return `${r.method} ${
 function largestFields(requests) {
   const out = new Map();
   for (const r of requests) {
-    const key = endpoint(r);
+    const key = `${endpoint(r)}\u0000${operationOf(r)}`;
     const fields = out.get(key) ?? out.set(key, new Map()).get(key);
     for (const [field, size] of fieldsOf(r)) fields.set(field, Math.max(fields.get(field) ?? 0, size));
   }
@@ -142,7 +147,8 @@ export function growthFields(before, after, lengthDelta) {
     for (const [field, size] of fields) {
       const was = old.get(field);
       if (was === undefined || size - was < 0.75 * lengthDelta) continue;
-      out.push({ url: key.slice(key.indexOf(' ') + 1), field });
+      const ep = key.slice(0, key.indexOf('\u0000'));
+      if (!out.some((g) => g.url === ep.slice(ep.indexOf(' ') + 1) && g.field === field)) out.push({ url: ep.slice(ep.indexOf(' ') + 1), field });
     }
   }
   return out;

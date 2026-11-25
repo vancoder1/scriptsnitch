@@ -4,7 +4,7 @@ import { siteSection, seenKeyOf, emptyApproved } from '../config/approved.js';
 import { coversPage } from '../config/patterns.js';
 import { ownOrigins } from './hosts.js';
 import { siteState, emptyStatusState, ownKey } from '../state.js';
-import { entrySlotsOf, deployEvident } from './deploy.js';
+import { entrySlotsOf, doubledEntrySlots, deployEvident } from './deploy.js';
 import { fileIdentity } from './urls.js';
 import { judgeScripts } from './judge-scripts.js';
 import { judgeBehaviour } from './judge-behaviour.js';
@@ -99,11 +99,12 @@ function siteContext({ site, approved, status, snapshot, now, pages, includeVisi
   const st = siteState(status, site);
   const visits = pages.flatMap((p) => Object.values(p.profiles).filter((r) => r?.conclusive).flatMap((r) => r.visits.filter((v) => v.conclusive && includeVisit(v))));
   const current = entrySlotsOf(visits, own);
+  const doubled = doubledEntrySlots(visits, own);
   const currentMarker = snapshot.sites?.[site]?.deployMarker ?? null;
   // A marker taken out of the config is forgotten; entry tokens show deploys again.
   const markerSet = snapshot.sites?.[site]?.deployMarkerSet ?? currentMarker !== null;
   if (!markerSet) st.marker = null;
-  const evident = deployEvident({ previousEntrySlots: st.entrySlots, currentEntrySlots: current, previousMarker: st.marker, currentMarker });
+  const evident = deployEvident({ previousEntrySlots: st.entrySlots, currentEntrySlots: current, previousMarker: st.marker, currentMarker, doubled });
   const inherited = new Map();
   const changed = new Set();
   const seenNow = new Set();
@@ -112,6 +113,15 @@ function siteContext({ site, approved, status, snapshot, now, pages, includeVisi
     site, section, own, st, run: status.run, snapshot, now, evident, pages, includeVisit, changed, seenNow,
     markSeen: (sectionName, e) => { const k = seenKeyOf(sectionName, e); seenNow.add(k); st.seen[k] = today; },
     entry: { previous: st.entrySlots, current },
+    // Whether a file loaded directly by the page is the known entry file of its slot: the slot was
+    // there last run (or this is a first run) and the file has its token; a replacement counts only
+    // when it is the slot's one file and, with a deploy marker set up, when the marker changed.
+    knownEntry: (slot, token) => {
+      if (!(slot in current)) return false;
+      if (!st.entrySlots) return true;
+      if (!(slot in st.entrySlots)) return false;
+      return st.entrySlots[slot] === token || (!doubled.has(slot) && (!markerSet || evident));
+    },
     // Own files known before this run: only these, and entry files of known slots, vouch for others.
     ownBaseline: new Set(Object.keys(st.ownHashes)),
     // Entry slots of files reported this run: not remembered, or the next run would take them for known.
@@ -224,7 +234,12 @@ export function judge({ snapshot, approved, state, now = Date.now() }) {
     // still recognised as a deploy; when all were conclusive, only this run's slots are kept.
     const allConclusive = pages.every((p) => Object.values(p.profiles).every((r) => !r || r.conclusive));
     if (allConclusive) prune(ctx.st, pages);
-    const accepted = Object.fromEntries(Object.entries(ctx.entry.current).filter(([slot]) => !ctx.reportedSlots.has(slot)));
+    // A slot whose file was reported keeps the token it had: the reported file is not its entry file.
+    const accepted = {};
+    for (const [slot, token] of Object.entries(ctx.entry.current)) {
+      if (!ctx.reportedSlots.has(slot)) accepted[slot] = token;
+      else if (ctx.entry.previous?.[slot]) accepted[slot] = ctx.entry.previous[slot];
+    }
     ctx.st.entrySlots = allConclusive ? accepted : { ...(ctx.st.entrySlots ?? {}), ...accepted };
     ctx.st.marker = ctx.marker ?? ctx.st.marker;
     // Drill visits are judged on a throwaway copy of the state, so they change nothing that lasts.

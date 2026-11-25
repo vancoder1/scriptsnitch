@@ -340,3 +340,26 @@ test('a handler path that serves many files keeps them all', () => {
   const first = run(page(), own);
   assert.deepEqual(kinds(run(page(), own, first.state)), []);
 });
+
+test('a second file in a known entry slot, beside the real one, is reported and is no deploy', () => {
+  const appr = approved({ scripts: [entry({ id: 'build', match: `${SITE}/assets/*-{token}.js`, trust: 'deploy', pages: ['**', '/checkout'] })] });
+  const real = `${SITE}/assets/index-CLlpVvjr.js`;
+  const st = () => { const s = state(); s.sites[SITE] = { entrySlots: { [`${SITE}/assets/index-{token}.js`]: 'CLlpVvjr' }, marker: null, ownHashes: { [ownKey(real)]: H(real).slice(0, 12) }, inline: {}, deployTokens: [], seen: {}, domains: {}, domainCheck: null }; return s; };
+  for (const order of [[real, `${SITE}/assets/index-Zz99Yy88.js`], [`${SITE}/assets/index-Zz99Yy88.js`, real]]) {
+    const r = run(one('/checkout', { scripts: order.map((u) => ext(u)) }, { sensitive: true }), appr, st());
+    assert.deepEqual(kinds(r), ['build-file:high'], order.join(' '));
+    assert.equal(r.state.sites[SITE].entrySlots[`${SITE}/assets/index-{token}.js`], 'CLlpVvjr', 'the slot keeps its real token');
+  }
+});
+
+test('with a deploy marker set up, a replaced entry bundle needs the marker to change', () => {
+  const appr = approved({ scripts: [entry({ id: 'build', match: `${SITE}/assets/*-{token}.js`, trust: 'deploy', pages: ['**', '/checkout'] })] });
+  const st = () => { const s = state(); s.sites[SITE] = { entrySlots: { [`${SITE}/assets/index-{token}.js`]: 'CLlpVvjr' }, marker: 'v1', ownHashes: {}, inline: {}, deployTokens: [], seen: {}, domains: {}, domainCheck: null }; return s; };
+  const at = (marker) => {
+    const snap = one('/checkout', { scripts: [ext(`${SITE}/assets/index-Zz99Yy88.js`)] }, { sensitive: true });
+    snap.sites[SITE] = { deployMarker: marker, deployMarkerSet: true };
+    return kinds(run(snap, appr, st()));
+  };
+  assert.deepEqual(at('v1'), ['build-file:high'], 'the marker did not change: no deploy');
+  assert.deepEqual(at('v2'), [], 'the marker changed: a deploy');
+});

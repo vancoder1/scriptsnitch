@@ -85,8 +85,8 @@ function judgeOwnFile(ctx, page, base, url, cls, obs, covering) {
   if (cls.kind === 'hashed' && /\{token\}|\*/.test(deployEntry.match)) {
     const slot = slotOf(url, cls);
     const entrySlot = slot in ctx.entry.current;
-    // Loaded directly by the page and nothing to compare with yet (a first or stateless run).
-    const known = entrySlot && (!ctx.entry.previous || slot in ctx.entry.previous);
+    // Loaded directly by the page as its slot's known entry file (see knownEntry in judge.js).
+    const known = !obs.creator && ctx.knownEntry(slot, cls.token);
     const referenced = (obs.referencedBy ?? []).some((u) => trustedReferencer(ctx, u));
     if (known || buildFileAccepted({ token: cls.token, referenced, evident: ctx.evident, deployTokens: st.deployTokens })) {
       if (!known) ctx.acceptByDeploy(`content:${url}|${hash}`);
@@ -104,7 +104,7 @@ function judgeOwnFile(ctx, page, base, url, cls, obs, covering) {
   if (cls.kind === 'versioned' && /\*/.test(deployEntry.match)) {
     const slot = slotOf(url, cls);
     const entrySlot = slot in ctx.entry.current;
-    const known = entrySlot && (!ctx.entry.previous || slot in ctx.entry.previous);
+    const known = !obs.creator && ctx.knownEntry(slot, cls.version);
     if (!ctx.entry.previous || known || ctx.evident) {
       if (ctx.entry.previous && !known) ctx.acceptByDeploy(`content:${url}|${hash}`);
       remember(st, k, hash);

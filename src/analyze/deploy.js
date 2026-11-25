@@ -19,14 +19,34 @@ export function entrySlotsOf(visits, own) {
   return slots;
 }
 
+// Entry slots that a single visit loads with two different tokens: two builds side by side is a file
+// named after the entry bundle, never a deploy.
+export function doubledEntrySlots(visits, own) {
+  const doubled = new Set();
+  for (const v of visits) {
+    if (!v.conclusive || v.role === 'drill') continue;
+    const seen = new Map();
+    for (const s of v.scripts) {
+      if (s.kind !== 'external' || s.creator || !s.ref.url || !own.has(originOf(s.ref.url))) continue;
+      const c = classifyUrl(s.ref.url);
+      const token = c.token ?? c.version ?? c.queryVersion;
+      if (!token) continue;
+      const slot = slotOf(s.ref.url, c);
+      if (seen.has(slot) && seen.get(slot) !== token) doubled.add(slot);
+      seen.set(slot, token);
+    }
+  }
+  return doubled;
+}
+
 // A deploy is evident when an entry slot that existed last run now has another token or version
 // (a replacement, never an addition), or when the deploy marker changed. The first run has none.
 // With a marker set up, only the marker counts: anyone who can edit the HTML can change an entry
 // token, while the marker is what the deploy itself sets.
-export function deployEvident({ previousEntrySlots, currentEntrySlots, previousMarker = null, currentMarker = null }) {
+export function deployEvident({ previousEntrySlots, currentEntrySlots, previousMarker = null, currentMarker = null, doubled = new Set() }) {
   if (previousMarker !== null || currentMarker !== null) return previousMarker !== null && currentMarker !== null && previousMarker !== currentMarker;
   if (!previousEntrySlots) return false;
-  return Object.entries(currentEntrySlots).some(([slot, token]) => slot in previousEntrySlots && previousEntrySlots[slot] !== token);
+  return Object.entries(currentEntrySlots).some(([slot, token]) => slot in previousEntrySlots && previousEntrySlots[slot] !== token && !doubled.has(slot));
 }
 
 // A new hashed file in an approved build folder is accepted when the build's chunk map names it,

@@ -22,6 +22,10 @@ test('a page that ended up outside the site is inconclusive, a redirect within o
   assert.equal(inconclusiveReason(visit({ finalUrl: 'https://auth.shop.example/login' }), page, { own }), null);
 });
 
+test('a redirect between the bare domain and www says how to fix the config', () => {
+  assert.equal(inconclusiveReason(visit({ finalUrl: 'https://www.shop.example/' }), page, { own }), 'ended up on https://www.shop.example, outside the site: if it is the same site, add it to `own` in the approved file or use that address in the config');
+});
+
 test('bot challenges are recognised by header, title or script host', () => {
   assert.equal(inconclusiveReason(visit({ headers: { 'cf-mitigated': 'challenge' } }), page, { own }), 'bot challenge (Cloudflare)');
   assert.equal(inconclusiveReason(visit({ title: 'Just a moment...' }), page, { own }), 'bot challenge (Cloudflare)');

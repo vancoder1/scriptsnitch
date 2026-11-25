@@ -32,7 +32,11 @@ export function inconclusiveReason(visit, page, { own, hasApprovedOwn = false, i
   if (vendor) return `bot challenge (${vendor})`;
   if (visit.document.status >= 400) return `the page answered ${visit.document.status}`;
   const origin = originOf(visit.document.finalUrl);
-  if (!origin || !own.has(origin)) return `ended up on ${origin ?? visit.document.finalUrl}, outside the site`;
+  if (!origin || !own.has(origin)) {
+    const bare = (url) => hostOf(url).replace(/^www\./, '');
+    const hint = origin && bare(origin) === bare(page.site) ? ': if it is the same site, add it to `own` in the approved file or use that address in the config' : '';
+    return `ended up on ${origin ?? visit.document.finalUrl}, outside the site${hint}`;
+  }
   if (hasApprovedOwn && !page.expect && !visit.scripts.some(isApprovedOwn)) return "expected content missing: none of the page's approved own scripts loaded";
   return null;
 }

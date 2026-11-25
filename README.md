@@ -355,6 +355,8 @@ Common options: `--config`, `--out`, `--chrome`.
 - The first inventory is only as clean as the site is on the first run.
 - It sees only the pages and steps you list. Inside third-party iframes it tracks origins and fields,
   not code, unless `frames` is `"all"`. A page reachable only through a form POST cannot be watched.
+  Pages are told apart by their path, so two pages of one site that differ only in their query
+  (`index.php?route=…`) cannot both be watched; the config is refused.
 - WebRTC detection is best effort. Domain checks depend on registries answering RDAP; domains whose
   registry does not are reported as unchecked, never as safe.
 - **GitHub turns off scheduled workflows in a public repository after 60 days without activity.** The

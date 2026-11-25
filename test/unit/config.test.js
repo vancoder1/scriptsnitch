@@ -33,6 +33,12 @@ test('a page can name its site and override settling', () => {
   assert.deepEqual(c.pages[0].settle, { quietMs: 1000, scriptQuietMs: 1500, capMs: 20000 });
 });
 
+test('two pages of one site that differ only in their query are refused, not merged', () => {
+  const pages = [{ name: 'Home', url: 'https://shop.example/index.php?route=common/home' }, { name: 'Checkout', url: 'https://shop.example/index.php?route=checkout/checkout', sensitive: true }];
+  assert.equal(pointerOf(() => parse({ pages })), '/pages/1/url');
+  assert.doesNotThrow(() => parse({ pages: [pages[0], { name: 'Other site', url: 'https://other.example/index.php?route=x' }] }));
+});
+
 test('rejects unknown fields with a pointer to them', () => {
   assert.equal(pointerOf(() => parse({ pages: [{ name: 'x', url: 'https://a.example/', sensitiv: true }] })), '/pages/0/sensitiv');
   assert.equal(pointerOf(() => parse({ ...minimal, concurency: 2 })), '/concurency');

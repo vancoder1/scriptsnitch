@@ -135,10 +135,15 @@ export function parseConfig(text, label) {
     if (err instanceof SchemaError) throw new ConfigError(err.detail, { label, pointer: err.pointer });
     throw err;
   }
-  for (const p of c.pages) {
+  const paths = new Map();
+  for (const [i, p] of c.pages.entries()) {
     const u = new URL(p.url);
     p.site ??= u.origin;
     p.path = u.pathname;
+    // Findings, state and the sensitive-page rule are kept per path: two pages on one path would share them.
+    const at = `${p.site}${p.path}`;
+    if (paths.has(at)) throw new ConfigError(`"${paths.get(at)}" is already on ${p.path} of ${p.site}; scriptsnitch tells pages apart by their path, so pages that differ only in their query cannot both be watched`, { label, pointer: `/pages/${i}/url` });
+    paths.set(at, p.name);
     p.expect ??= null;
     p.consent ??= c.consent;
     p.settle ??= { quietMs: 1000, scriptQuietMs: 1500, capMs: 15000 };

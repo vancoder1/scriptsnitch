@@ -18,23 +18,94 @@ function hostOf(value) {
   try { return new URL(value.startsWith('//') ? `https:${value}` : value).hostname; } catch { return value.toLowerCase(); }
 }
 
-// One top-level statement that assigns to, or pushes onto, a known framework data global.
+// A framework data script is exactly one of the shapes frameworks write, holding nothing but data:
+//   var X = DATA / window.X = DATA / self.X = DATA                  (WooCommerce, Next.js, Redux state)
+//   X.push(DATA) / (self.X = self.X || []).push(DATA, ...)            (Next.js flight data)
+//   window.X = (function (a, b) { return DATA(a, b) }(DATA, ...))     (Nuxt: data from its parameters)
+// where DATA is literals, arrays and objects. A call, a function with more than a return, or a second
+// statement anywhere makes it ordinary code: everything in a data script is ignored but its hosts.
 function dataGlobalOf(sig) {
-  let depth = 0;
-  let statements = 0;
-  for (let i = 0; i < sig.length; i++) {
-    const v = sig[i].value;
-    if (sig[i].type === 'punct') {
-      if (v === '(' || v === '[' || v === '{') depth++;
-      else if (v === ')' || v === ']' || v === '}') depth--;
-      else if (v === ';' && depth === 0 && i < sig.length - 1) statements++;
+  let i = 0;
+  const peek = (k = 0) => sig[i + k];
+  const is = (v, k = 0) => peek(k)?.value === v && (peek(k).type === 'punct' || peek(k).type === 'ident');
+  const eat = (v) => { if (!is(v)) throw new Error(v); i++; };
+  const ident = () => { const t = peek(); if (t?.type !== 'ident') throw new Error('ident'); i++; return t.value; };
+  // window.X, self.X, globalThis.X or X; with `var`, `let` or `const` only X.
+  const target = () => {
+    if (is('var') || is('let') || is('const')) { i++; return ident(); }
+    const first = ident();
+    if (['window', 'self', 'globalThis'].includes(first) && is('.')) { i++; return ident(); }
+    return first;
+  };
+  const data = (params) => {
+    const t = peek();
+    if (!t) throw new Error('end');
+    if (isLiteral(t) && t.type !== 'regex') { i++; return; }
+    if (t.type === 'ident' && (DATA_WORDS.has(t.value) || params.has(t.value))) { i++; return; }
+    if (is('-') || is('!')) { i++; if (peek()?.type !== 'number') throw new Error('number'); i++; return; }
+    if (is('void') && peek(1)?.type === 'number') { i += 2; return; }
+    if (is('[')) {
+      i++;
+      while (!is(']')) { if (is(',')) { i++; continue; } data(params); if (!is(']')) eat(','); }
+      i++;
+      return;
     }
+    if (is('{')) {
+      i++;
+      while (!is('}')) {
+        const key = peek();
+        if (!key || !(key.type === 'string' || key.type === 'number' || key.type === 'ident')) throw new Error('key');
+        i++;
+        eat(':');
+        data(params);
+        if (!is('}')) eat(',');
+      }
+      i++;
+      return;
+    }
+    throw new Error('not data');
+  };
+  // (function (a, b) { return DATA }(ARGS)) or (function (a, b) { return DATA })(ARGS)
+  const value = () => {
+    if (!(is('(') && is('function', 1))) return data(new Set());
+    eat('(');
+    eat('function');
+    eat('(');
+    const params = new Set();
+    while (!is(')')) { params.add(ident()); if (!is(')')) eat(','); }
+    eat(')');
+    eat('{');
+    eat('return');
+    data(params);
+    if (is(';')) i++;
+    eat('}');
+    const args = () => { eat('('); while (!is(')')) { data(new Set()); if (!is(')')) eat(','); } eat(')'); };
+    if (is(')')) { eat(')'); args(); } else { args(); eat(')'); }
+  };
+  const pushArgs = () => { eat('push'); eat('('); while (!is(')')) { value(); if (!is(')')) eat(','); } eat(')'); };
+  try {
+    let name;
+    if (is('(')) {
+      // (self.X = self.X || []).push(...)
+      eat('(');
+      name = target();
+      eat('=');
+      if (target() !== name) return null;
+      eat('||');
+      eat('[');
+      eat(']');
+      eat(')');
+      eat('.');
+      pushArgs();
+    } else {
+      name = target();
+      if (is('=')) { i++; value(); } else { eat('.'); pushArgs(); }
+    }
+    if (is(';')) i++;
+    return i === sig.length && GLOBALS.has(name) ? name : null;
+  } catch {
+    return null;
   }
-  if (statements > 0) return null;
-  for (const t of sig.slice(0, 12)) {
-    if (t.type === 'ident' && GLOBALS.has(t.value)) return t.value;
-  }
-  return null;
 }
 
 function collapsible(token, next) {
@@ -72,8 +143,7 @@ export function templateOf(source) {
         if (isUrlOrHost(v)) hosts.add(hostOf(v));
       }
     }
-    const kept = sig.filter((t, i) => isLiteral(t) && insideCodeRunner(sig, i)).map((t) => t.value);
-    return { hash: sha256Hex(['DATA', dataGlobal, ...[...hosts].sort(), ...kept].join('\u0001')), dataGlobal };
+    return { hash: sha256Hex(['DATA', dataGlobal, ...[...hosts].sort()].join('\u0001')), dataGlobal };
   }
   const out = [];
   const callStack = [];
@@ -103,20 +173,6 @@ export function templateOf(source) {
     out.push(t.value);
   });
   return { hash: sha256Hex(collapseData(out).join('\u0001')), dataGlobal: null };
-}
-
-function insideCodeRunner(sig, index) {
-  let depth = 0;
-  for (let i = index - 1; i >= 0; i--) {
-    const v = sig[i].value;
-    if (sig[i].type !== 'punct') continue;
-    if (v === ')') depth++;
-    else if (v === '(') {
-      if (depth === 0) return sig[i - 1]?.type === 'ident' && CODE_RUNNERS.has(sig[i - 1].value);
-      depth--;
-    }
-  }
-  return false;
 }
 
 function assignsHtml(sig, i) {

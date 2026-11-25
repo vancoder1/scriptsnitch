@@ -91,15 +91,25 @@ test('a framework data script stops being data once another statement follows it
   const data = 'window.__INITIAL_STATE__ = {"cart": [1, 2], "user": null};';
   assert.equal(templateOf(data).dataGlobal, '__INITIAL_STATE__');
   assert.equal(templateOf(`${data} document.forms[0].addEventListener("submit", function () { send(this); });`).dataGlobal, null);
-  // Statements inside a function that builds the data are not top-level statements.
-  assert.equal(templateOf('window.__NUXT__ = (function (a, b) { var c = {}; return {state: {cart: a}, user: b}; })([1, 2], "x");').dataGlobal, '__NUXT__');
+  // Nuxt's payload: a function that only returns data built from its parameters.
+  assert.equal(templateOf('window.__NUXT__=(function(a,b){return {state:{cart:a},user:b}}([1,2],"x"));').dataGlobal, '__NUXT__');
+  assert.equal(templateOf('window.__NUXT__ = (function (a, b) { var c = {}; return {state: {cart: a}, user: b}; })([1, 2], "x");').dataGlobal, null, 'a statement before the return is code');
 });
 
-test('a framework data script keeps its hosts and the code it hands to eval or a timer', () => {
-  const page = ({ cart = '[1]', host = 'cdn.shop.example', boot = 'init()' } = {}) => templateOf(`window.__INITIAL_STATE__ = {"cart": ${cart}, "cdn": "https://${host}/img/", "boot": setTimeout("${boot}", 10)};`).hash;
+test('only data counts as a framework data script: a call or a function inside it is code', () => {
+  const flight = (arg) => templateOf(`(self.__next_f=self.__next_f||[]).push(${arg})`);
+  assert.equal(flight('[1,"0:[\\"$\\",\\"html\\"]"]').dataGlobal, '__next_f');
+  const hidden = flight('(function(){ document.forms[0].addEventListener("submit", function () { navigator.sendBeacon("/c", new FormData(this)); }); return [0]; })()');
+  assert.equal(hidden.dataGlobal, null);
+  assert.notEqual(hidden.hash, flight('[1,"x"]').hash);
+  assert.equal(templateOf('self.__next_f.push([1, steal()])').dataGlobal, null);
+  assert.equal(templateOf('window.__INITIAL_STATE__ = {"boot": setTimeout("init()", 10)};').dataGlobal, null);
+});
+
+test('a framework data script keeps its hosts', () => {
+  const page = ({ cart = '[1]', host = 'cdn.shop.example' } = {}) => templateOf(`window.__INITIAL_STATE__ = {"cart": ${cart}, "cdn": "https://${host}/img/"};`).hash;
   assert.equal(page(), page({ cart: '[1, 2, 3]' }));
   assert.notEqual(page(), page({ host: 'evil.example' }));
-  assert.notEqual(page(), page({ boot: 'steal()' }));
 });
 
 test('literals after a timer call are masked again', () => {

@@ -29,6 +29,14 @@ test('finds the sign-in password field with its signature', async (t) => {
   assert.deepEqual(v.fields, [{ frame: 'top', form: 'POST /login', field: 'password', kind: 'password', count: 1 }]);
 });
 
+test("finds sensitive fields in srcdoc and about:blank frames, as the page's own", async (t) => {
+  if (!browser) return t.skip('no Chrome');
+  await site.setScenario('srcdoc-form');
+  const v = await visit('/checkout');
+  assert.ok(v.fields.some((f) => f.kind === 'card' && f.field === 'ccnum' && f.frame === 'top'), JSON.stringify(v.fields));
+  assert.ok(v.fields.some((f) => f.kind === 'password' && f.field === 'pin' && f.frame === 'top'), JSON.stringify(v.fields));
+});
+
 test('counts a second card field with the same signature', async (t) => {
   if (!browser) return t.skip('no Chrome');
   await site.setScenario('card-overlay');

@@ -113,7 +113,9 @@ export async function readDom(ctx, { own, framesMode = 'own', extraSelectors = {
 
     for (const { node, docUrl } of tree.entries) {
       const docOrigin = originOf(docUrl);
-      const inTopDocument = session === page && (docUrl === doc.documentURL);
+      // A frame with no address of its own (about:blank, about:srcdoc, data:) was drawn by the page,
+      // and a fake payment form in one is the page's: its fields are the top document's.
+      const inTopDocument = session === page && (docUrl === doc.documentURL || !docOrigin);
       const frameLabel = inTopDocument ? 'top' : docOrigin;
       if (node.localName === 'iframe' && session === page && node.contentDocument) {
         const origin = originOf(node.contentDocument.documentURL);

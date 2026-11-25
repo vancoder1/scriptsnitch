@@ -36,7 +36,7 @@ function harness() {
   const dir = mkdtempSync(join(tmpdir(), 'scriptsnitch-report-'));
   return { dir, gh: createFakeGitHub({ permissions: { octocat: 'write' } }) };
 }
-async function doRun(h, n, s, { evidence = { [H(INDEX)]: APP_SOURCE }, failOn = 'never', dryRun = false, missing = false } = {}) {
+async function doRun(h, n, s, { evidence = { [H(INDEX)]: APP_SOURCE }, failOn = 'never', dryRun = false, missing = false, propose = 'pr' } = {}) {
   const dir = join(h.dir, `run${n}`);
   mkdirSync(join(dir, 'evidence'), { recursive: true });
   if (!missing) {
@@ -49,7 +49,7 @@ async function doRun(h, n, s, { evidence = { [H(INDEX)]: APP_SOURCE }, failOn = 
   const text = h.gh.file(PATH, 'main');
   const result = await report({
     snapshotPath: join(dir, 'snapshot.json'), outDir: dir, config, approved: text ? parseApproved(text, PATH) : emptyApproved(), approvedPath: PATH,
-    github: h.gh, dryRun, propose: 'pr', failOn, workflowFile: 'scriptsnitch.yml', runId: 100 + n, runUrl: `https://github.com/acme/shop/actions/runs/${100 + n}`, repoUrl: 'https://github.com/acme/shop',
+    github: h.gh, dryRun, propose, failOn, workflowFile: 'scriptsnitch.yml', runId: 100 + n, runUrl: `https://github.com/acme/shop/actions/runs/${100 + n}`, repoUrl: 'https://github.com/acme/shop',
     now: day(n), resolve: async () => ['192.0.2.1'], fetchImpl: async () => new Response('{}', { status: 404 }), summaryPath: join(dir, 'summary.md'),
   });
   if (!missing && !dryRun) {
@@ -120,6 +120,16 @@ test('the status issue says when a watched page ended on another page of the sit
   await doRun(h, 0, s);
   assert.match(statusIssue(h.gh).body, /ended on `\/cart`/);
   assert.ok(!/ended on `\/`/.test(statusIssue(h.gh).body), 'the home page ended where it started');
+});
+
+test('with proposals in the issue instead of a pull request, the first run still ends with the first issue', async (t) => {
+  const h = harness();
+  t.after(() => rmSync(h.dir, { recursive: true, force: true }));
+  await doRun(h, 0, snap(), { propose: 'issue' });
+  const evil = 'https://evil.example/x.js';
+  await doRun(h, 1, snap(observed(), observed({ extra: [ext(evil)] })), { propose: 'issue' });
+  const r = JSON.parse(readFileSync(join(h.dir, 'run1', 'report.json'), 'utf8'));
+  assert.equal(r.proposals.find((p) => p.entry?.match === evil).mode, 'pending');
 });
 
 test('a clean second run after merging closes nothing it should not', async (t) => {

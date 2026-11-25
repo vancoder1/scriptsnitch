@@ -1275,8 +1275,12 @@ From the release review:
   (Google, Microsoft, Amazon Web Services) a script from another host inherits a loader's trust only
   from a host listed as serving the company's own code (`data/vendor-own-hosts.json`).
 - **Build folders (section 8).** A reported build file's entry slot is not remembered, so it is reported
-  again; a new file in a version folder needs a first run, a deploy or a known entry slot. A
-  `deployMarker` taken out of the config is forgotten.
+  again; a new file in a version folder needs a first run, a deploy or a known entry slot. A slot that
+  one visit loads with two tokens is no deploy evidence and only its previous token is known there;
+  with a `deployMarker` set up, a replaced entry bundle needs the marker to change. A `deployMarker`
+  taken out of the config is forgotten.
+- **Frames that go (section 7).** What a removed frame did stays labelled as its frame's: the context
+  keeps gone sessions and every frame's address for labelling, and sends commands to live ones only.
 - **Probe (section 11).** Frames that have gone leave the context, a lost probe is named on the status
   issue, and GraphQL operations are compared one by one in the growth test.
 - **State (section 6).** The site marker keeps compact entries (kind, subject and page come from the

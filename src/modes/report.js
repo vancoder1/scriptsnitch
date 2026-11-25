@@ -9,11 +9,10 @@ import { judge, observedIndex } from '../analyze/judge.js';
 import { proposalsFor, staleProposals } from '../analyze/proposals.js';
 import { readStatus, reconcileStatus } from '../report/status-issue.js';
 import { readSites, reconcileSite } from '../report/site-issue.js';
-import { syncApprovalPr } from '../report/pr.js';
+import { syncApprovalPr, findApprovalPull } from '../report/pr.js';
 import { previousEvidence } from '../report/artifacts.js';
 import { renderDiff } from '../report/diff.js';
 import { domainsToCheck, checkDomains } from '../report/domains.js';
-import { readMarker } from '../report/markers.js';
 import { reportOf, writeReport, formatSummaryMarkdown } from '../report/summary.js';
 import { siteState } from '../state.js';
 import { isoDate, daysBetween } from '../util/time.js';
@@ -105,7 +104,8 @@ export async function report({ snapshotPath, outDir = dirname(snapshotPath), con
   const { diffs, fulls, note } = await buildDiffs({ findings: allFindings, snapshot, outDir, github, workflowFile, runId });
   if (note) notes.push(note);
 
-  const openPrSites = dryRun ? new Set() : new Set((await github.listPulls({ state: 'open' })).map((p) => readMarker(p.body, 'pr')?.site).filter(Boolean));
+  const openPulls = dryRun ? [] : await github.listPulls({ state: 'open' });
+  const hasOpenPr = (site) => Boolean(findApprovalPull(openPulls, site));
   const allProposals = [];
   const prs = {};
   const siteStates = [];
@@ -118,8 +118,8 @@ export async function report({ snapshotPath, outDir = dirname(snapshotPath), con
     const proposals = proposalsFor([...group.findings, ...(firstRun ? group.held : [])], approved, { now, headers: { [site]: result.headers[site] ?? {} } });
     // Stale entries ride with other proposals or an open pull request, or go alone once a month.
     const stale = staleProposals({ ...approved, sites: approved.sites[site] ? { [site]: approved.sites[site] } : {} }, state, now);
-    if (stale.length && (proposals.length || openPrSites.has(site) || !st.staleAt || daysBetween(st.staleAt, today) >= STALE_ALONE_DAYS)) {
-      if (!proposals.length && !openPrSites.has(site)) st.staleAt = today;
+    if (stale.length && (proposals.length || hasOpenPr(site) || !st.staleAt || daysBetween(st.staleAt, today) >= STALE_ALONE_DAYS)) {
+      if (!proposals.length && !hasOpenPr(site)) st.staleAt = today;
       proposals.push(...stale);
     }
     allProposals.push(...proposals);

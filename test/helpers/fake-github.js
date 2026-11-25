@@ -121,7 +121,8 @@ export function createFakeGitHub(initial = {}) {
     },
     async createPull({ title, head, base, body }) {
       if (!state.refs[`heads/${head}`]) throw new HttpError('POST', 'pulls', 422, '{"message":"head does not exist"}');
-      const pr = { number: ++number, title, body, state: 'open', merged: false, head: { ref: head }, base: { ref: base }, user: bot, created_at: tick(), html_url: `https://github.com/${owner}/repo/pull/${number}` };
+      const repo = { full_name: `${owner}/repo` };
+      const pr = { number: ++number, title, body, state: 'open', merged: false, head: { ref: head, repo }, base: { ref: base, repo }, user: bot, created_at: tick(), html_url: `https://github.com/${owner}/repo/pull/${number}` };
       state.pulls.push(pr);
       return structuredClone(pr);
     },

@@ -6,7 +6,7 @@
 import { readMarker, writeMarker } from '../report/markers.js';
 import { md, code } from '../report/text.js';
 import { parseApproved, emptyApproved, serializeApproved, approvePending, siteSection } from '../config/approved.js';
-import { startBranch, prTitle, ENABLE_PULL_REQUESTS } from '../report/pr.js';
+import { startBranch, prTitle, findApprovalPull, ENABLE_PULL_REQUESTS } from '../report/pr.js';
 import { LABEL } from '../report/status-issue.js';
 import { HttpError } from '../report/github.js';
 
@@ -51,7 +51,7 @@ export async function handleComment({ event, github, approvedPath, botLogin = 'g
   if (!reason || /^TODO\b/i.test(reason)) return respond(`Say why the page needs it: ${code('/scriptsnitch approve <finding key> because <reason>')}. The reason is the record PCI DSS 6.4.3 asks for.`, 'refused');
 
   // The pending item lives in the open approval pull request's file, or on main once that merged.
-  const open = (await github.listPulls({ state: 'open' })).find((p) => readMarker(p.body, 'pr')?.site === site) ?? null;
+  const open = findApprovalPull(await github.listPulls({ state: 'open' }), site);
   const file = await github.getContent(approvedPath, open?.head.ref ?? base);
   const approved = file ? parseApproved(file.text, approvedPath) : emptyApproved();
   if (!siteSection(approved, site).pending.some((p) => p.finding === key)) {

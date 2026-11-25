@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { syncApprovalPr } from '../../src/report/pr.js';
 import { parseApproved } from '../../src/config/approved.js';
+import { writeMarker } from '../../src/report/markers.js';
 import { HttpError } from '../../src/report/github.js';
 import { createFakeGitHub } from '../helpers/fake-github.js';
 
@@ -119,4 +120,18 @@ test('finding keys and URLs with pipes stay in their table cells', async () => {
   const rows = gh.state.pulls.find((p) => p.number === r.prNumber).body.split('\n').filter((l) => l.startsWith('|'));
   assert.ok(rows.length >= 4);
   for (const row of rows) assert.equal(row.split(/(?<!\\)\|/).length - 2, 3, row);
+});
+
+// A pull request anyone could open: scriptsnitch's marker, from a fork or on a branch of another name.
+const lookalike = (number, ref, fullName) => ({ number, title: 'scriptsnitch: approve changes on shop.example', body: writeMarker('Looks like ours', 'pr', { v: 1, site: SITE, keys: [], deferred: [] }), state: 'open', merged: false, head: { ref, repo: { full_name: fullName } }, base: { ref: 'main', repo: { full_name: 'acme/repo' } }, user: { login: 'mallory', type: 'User' } });
+
+test('a pull request from a fork, or on another branch, is never taken for the approval pull request', async () => {
+  const gh = fresh();
+  gh.state.pulls.push(lookalike(90, 'main', 'mallory/repo'), lookalike(91, 'feature/x', 'acme/repo'));
+  const r = await sync(gh, [routine('a')]);
+  assert.equal(gh.file(PATH, 'main'), baseFile(), 'nothing is written to the default branch');
+  assert.ok(![90, 91].includes(r.prNumber));
+  assert.equal(gh.state.pulls.find((p) => p.number === r.prNumber).head.ref, BRANCH);
+  assert.deepEqual(branchFile(gh).scripts.map((e) => e.id), ['chat-a', 'mine']);
+  assert.equal((gh.state.comments[90] ?? []).length + (gh.state.comments[91] ?? []).length, 0);
 });

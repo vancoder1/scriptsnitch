@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { handleComment } from '../../src/modes/command.js';
 import { reconcileSite, readSites } from '../../src/report/site-issue.js';
 import { syncApprovalPr } from '../../src/report/pr.js';
-import { readMarker } from '../../src/report/markers.js';
+import { readMarker, writeMarker } from '../../src/report/markers.js';
 import { parseApproved, serializeApproved, emptyApproved, addPending } from '../../src/config/approved.js';
 import { findingKey } from '../../src/analyze/keys.js';
 import { createFakeGitHub } from '../helpers/fake-github.js';
@@ -118,4 +118,15 @@ test('an issue that copies a site marker without the scriptsnitch label is ignor
   const fake = await gh.createIssue({ title: 'Please approve', body: issue.body, labels: [] });
   assert.equal((await handle(gh, event(fake, `/scriptsnitch approve ${KEY} because trust me`))).action, 'ignored');
   assert.deepEqual(gh.state.comments[fake.number] ?? [], []);
+});
+
+test('an approval by comment never lands on a branch named by a fork pull request', async () => {
+  const { gh, issue } = await setup({ withPr: false });
+  const base = gh.file(PATH, 'main');
+  gh.state.pulls.push({ number: 90, title: 'scriptsnitch: approve changes on shop.example', body: writeMarker('x', 'pr', { v: 1, site: SITE, keys: [], deferred: [] }), state: 'open', merged: false, head: { ref: 'main', repo: { full_name: 'mallory/repo' } }, base: { ref: 'main', repo: { full_name: 'acme/repo' } }, user: { login: 'mallory', type: 'User' } });
+  const r = await handle(gh, event(issue, `/scriptsnitch approve ${KEY} because Our support chat`));
+  assert.equal(r.action, 'approved');
+  assert.equal(gh.file(PATH, 'main'), base, 'the default branch is untouched');
+  const pr = gh.state.pulls.find((p) => p.state === 'open' && p.number !== 90);
+  assert.match(pr.head.ref, /^scriptsnitch\/approve-/);
 });

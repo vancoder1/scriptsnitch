@@ -20,6 +20,18 @@ const keysOf = (p) => [keyOf(p), ...(p.also ?? [])];
 export const branchFor = (site) => `scriptsnitch/approve-${hostOf(site).replace(/:/g, '-')}`;
 export const prTitle = (site) => `scriptsnitch: approve changes on ${hostOf(site)}`;
 
+// The site's open approval pull request: scriptsnitch's marker on a branch of this repository named
+// for the site. Anyone can open a pull request with a copied marker, from a fork whose branch is
+// called `main`, say; writing to its branch name would write to this repository's default branch.
+export function findApprovalPull(pulls, site) {
+  const root = branchFor(site);
+  const isOurs = (ref) => ref === root || (ref.startsWith(`${root}-`) && /^\d+$/.test(ref.slice(root.length + 1)));
+  return pulls.find((p) => {
+    const sameRepo = Boolean(p.head?.repo?.full_name) && p.head.repo.full_name === p.base?.repo?.full_name;
+    return sameRepo && isOurs(p.head.ref ?? '') && readMarker(p.body, 'pr')?.site === site;
+  }) ?? null;
+}
+
 // A new approval branch started from base. An old bot-only branch is started again; one with a
 // person's commits is left alone (its pull request holds them) and a new name is used.
 export async function startBranch(github, { site, base, botLogin }) {
@@ -102,7 +114,7 @@ export async function syncApprovalPr(github, { site, proposals, approvedPath, ba
   const liveKeys = new Set(live.flatMap(keysOf));
   const title = prTitle(site);
 
-  const open = (await github.listPulls({ state: 'open' })).find((p) => readMarker(p.body, 'pr')?.site === site) ?? null;
+  const open = findApprovalPull(await github.listPulls({ state: 'open' }), site);
   if (open) {
     const marker = readMarker(open.body, 'pr');
     const head = open.head.ref;

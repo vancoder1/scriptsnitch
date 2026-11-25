@@ -100,7 +100,7 @@ test('mutes one finding', async () => {
   assert.equal(r.action, 'muted');
   const state = readMarker(gh.state.issues.find((i) => i.number === issue.number).body, 'site');
   assert.equal(state.findings[ROUTINE_KEY].muted, true);
-  assert.equal(state.findings[KEY].muted, false);
+  assert.ok(!state.findings[KEY].muted, 'the other finding is not muted');
 });
 
 test('a finding key with spaces in it is understood, to approve and to mute', async () => {

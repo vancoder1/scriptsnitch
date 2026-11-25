@@ -181,3 +181,13 @@ test('hundreds of long findings still fit in one issue, which can be rewritten n
   await step(gh, 1, many);
   assert.ok(issuesFor(gh)[0].body.length <= 65536);
 });
+
+test('a busy first run of 150 findings is remembered whole: the next run posts no new comment', async () => {
+  const gh = createFakeGitHub();
+  const many = Array.from({ length: 150 }, (_, i) => ({ ...f(i % 4 ? 'new-destination' : 'new-origin', `https://collector-${i}.vendor${i % 7}.example/path/js`, i % 4 ? 'medium' : 'high', { reasons: ['a request to an origin which no destination entry approves for this page'] }), observedAs: [`subject:https://collector-${i}.vendor${i % 7}.example`] }));
+  await step(gh, 0, many);
+  await step(gh, 1, many, { notify: ['octocat'] });
+  const [issue] = issuesFor(gh);
+  assert.deepEqual(commentsOn(gh, issue), []);
+  assert.equal(Object.keys(readMarker(issue.body, 'site').findings).length, 150);
+});

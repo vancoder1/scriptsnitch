@@ -7,11 +7,36 @@ import { md, code, cellCode } from './text.js';
 import { emptySiteState } from '../state.js';
 import { isoDate, daysBetween } from '../util/time.js';
 import { LABEL } from './status-issue.js';
+import { parseKey } from '../analyze/keys.js';
+import { short, sha256Hex } from '../util/hash.js';
+
+// The site marker keeps each finding compactly: its kind, subject and page are in its key, what it was
+// observed as is kept as digests, and a reason only for a High, which may need showing after it
+// vanishes. Everything else about a live finding comes from the run.
+const digest = (x) => short(sha256Hex(x));
+function compact(st) {
+  const findings = {};
+  for (const [k, e] of Object.entries(st.findings)) {
+    const { kind, subject, page, reasons, observedAs, obs, muted, droppedAt, missed, acceptedAt, reported, ...rest } = e;
+    // Fields at their usual value are left out, and filled in again when the marker is read.
+    findings[k] = {
+      ...rest,
+      ...(reported !== e.first ? { reported } : {}),
+      ...(missed ? { missed } : {}),
+      ...(muted ? { muted } : {}),
+      ...(droppedAt ? { droppedAt } : {}),
+      ...(acceptedAt ? { acceptedAt } : {}),
+      obs: obs ?? [],
+      ...(e.severity === 'high' && reasons?.length ? { reasons: [reasons[0].slice(0, 200)] } : {}),
+    };
+  }
+  return { ...st, findings };
+}
 
 const KEEP_DROPPED_DAYS = 30;
 const KEEP_MUTED_DAYS = 90;
 const BODY_LIMIT = 60000;
-const MARKER_LIMIT = 30000;
+const MARKER_LIMIT = 40000;
 const DEPLOY_ACCEPTS = new Set(['build-file', 'new-inline']);
 const BADGE = { high: '🔴 High', medium: '🟠 Medium' };
 
@@ -67,6 +92,12 @@ export async function reconcileSite(github, { site, issue = null, siteState = nu
   const st = structuredClone(prev);
   st.findings ??= {};
   for (const [k, e] of Object.entries(st.findings)) {
+    const { kind, subject, page } = parseKey(k);
+    Object.assign(e, { kind: e.kind ?? kind, subject: e.subject ?? subject, page: e.page ?? page, reasons: e.reasons ?? [], obs: e.obs ?? (e.observedAs ?? []).map(digest), missed: e.missed ?? 0, muted: e.muted ?? false, droppedAt: e.droppedAt ?? null, reported: e.reported ?? e.first });
+  }
+  const observed = new Set([...(run.observed ?? [])].map(digest));
+  const byDeploy = new Set([...(run.acceptedByDeploy ?? [])].map(digest));
+  for (const [k, e] of Object.entries(st.findings)) {
     if (e.droppedAt && daysBetween(e.droppedAt, today) > KEEP_DROPPED_DAYS) delete st.findings[k];
     else if (e.muted && daysBetween(e.last, today) > KEEP_MUTED_DAYS) delete st.findings[k];
   }
@@ -78,7 +109,7 @@ export async function reconcileSite(github, { site, issue = null, siteState = nu
   for (const f of findings) {
     let e = st.findings[f.key];
     if (!e) { e = st.findings[f.key] = { first: today, reported: today, muted: false }; fresh.push(f); }
-    Object.assign(e, { last: today, missed: 0, droppedAt: null, kind: f.kind, severity: f.severity, subject: f.subject, page: f.page, seenOn: f.seenOn ?? [], profiles: f.profiles ?? [], reasons: f.reasons.slice(0, 3), observedAs: f.observedAs ?? [] });
+    Object.assign(e, { last: today, missed: 0, droppedAt: null, kind: f.kind, severity: f.severity, subject: f.subject, page: f.page, seenOn: f.seenOn ?? [], profiles: f.profiles ?? [], reasons: f.reasons.slice(0, 3), obs: (f.observedAs ?? []).map(digest) });
   }
   for (const [k, e] of Object.entries(st.findings)) {
     if (live.has(k) || e.droppedAt) continue;
@@ -86,8 +117,8 @@ export async function reconcileSite(github, { site, issue = null, siteState = nu
     // raised under a deploy entry (a file dropped in the build folder, a new inline script with no
     // deploy) that a later deploy accepted, rather than an approval, stays listed until a person
     // closes the issue: whoever can change what the page loads can make a deploy evident.
-    if (e.observedAs?.some((x) => run.observed?.has(x))) {
-      if (e.severity === 'high' && DEPLOY_ACCEPTS.has(e.kind) && (e.acceptedAt || e.observedAs.some((x) => run.acceptedByDeploy?.has(x)))) { e.acceptedAt ??= today; continue; }
+    if (e.obs.some((x) => observed.has(x))) {
+      if (e.severity === 'high' && DEPLOY_ACCEPTS.has(e.kind) && (e.acceptedAt || e.obs.some((x) => byDeploy.has(x)))) { e.acceptedAt ??= today; continue; }
       delete st.findings[k];
       continue;
     }
@@ -114,7 +145,7 @@ export async function reconcileSite(github, { site, issue = null, siteState = nu
 
   const view = { site, active, muted, today, links, diffs, firstRun: findings.some((f) => f.firstRun), notify, edits };
   // The marker is fitted first; the text gets the rest of the body, with fewer rows until it fits.
-  const kept = fitSiteState(st, MARKER_LIMIT);
+  const kept = fitSiteState(compact(st), MARKER_LIMIT);
   const room = BODY_LIMIT - markerText('site', kept).length - 1;
   let text = render(view);
   if (text.length > room) text = render({ ...view, withDiffs: false });

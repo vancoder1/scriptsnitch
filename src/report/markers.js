@@ -31,20 +31,19 @@ function trim(map, order, fits) {
   }
 }
 
-// The site marker keeps under `limit`, leaving the rest of the issue body for the text. What goes,
-// in order: the details of findings the issue no longer shows (dropped, muted), those findings
-// themselves, every finding's reasons beyond the first, then the findings seen longest ago, Medium
-// before High. A finding forgotten this way is new again if it comes back.
+// The site marker keeps under `limit`, leaving the rest of the issue body for the text. Entries are
+// compact already (see site-issue.js); what goes when that is not enough, in order: findings dropped
+// off the issue, the reasons kept for Highs, then the findings seen longest ago, muted first and High
+// last. A finding forgotten this way is new again if it comes back.
 export function fitSiteState(state, limit = 30000) {
   const fits = (s) => markerText('site', s).length <= limit;
   if (fits(state)) return state;
   const out = structuredClone(state);
   const entries = () => Object.entries(out.findings);
-  for (const [, e] of entries()) if (e.droppedAt || e.muted) { delete e.reasons; delete e.observedAs; }
   const dropped = entries().filter(([, e]) => e.droppedAt).sort((a, b) => a[1].droppedAt.localeCompare(b[1].droppedAt)).map(([k]) => k);
   trim(out.findings, dropped, () => fits(out));
   if (fits(out)) return out;
-  for (const [, e] of entries()) if (e.reasons) e.reasons = e.reasons.slice(0, 1).map((r) => r.slice(0, 200));
+  for (const [, e] of entries()) delete e.reasons;
   const rank = ([, e]) => (e.muted ? 0 : e.severity === 'high' ? 2 : 1);
   const order = entries().sort((a, b) => rank(a) - rank(b) || String(a[1].last).localeCompare(String(b[1].last))).map(([k]) => k);
   trim(out.findings, order, () => fits(out));

@@ -333,3 +333,10 @@ test('a deploy marker taken out of the config stops counting, and entry tokens s
   assert.deepEqual(kinds(r), [], 'the entry token changed: a deploy');
   assert.equal(r.state.sites[SITE].marker, null, 'the old marker is forgotten');
 });
+
+test('a handler path that serves many files keeps them all', () => {
+  const own = approved({ scripts: [entry({ id: 'axd', match: `${SITE}/ScriptResource.axd`, trust: 'deploy', pages: ['**', '/checkout'] })] });
+  const page = () => one('/checkout', { scripts: Array.from({ length: 30 }, (_, i) => ext(`${SITE}/ScriptResource.axd?d=resource${i}`, { hash: H(`r${i}`) })) }, { sensitive: true });
+  const first = run(page(), own);
+  assert.deepEqual(kinds(run(page(), own, first.state)), []);
+});

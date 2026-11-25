@@ -11,6 +11,10 @@ import { ownKey } from '../state.js';
 const hostOf = (url) => { try { return new URL(url).hostname; } catch { return ''; } };
 const patternOrigin = (pattern) => originOf(pattern.replace(/\{token\}|\{version\}|\*\*?/g, 'x'));
 const inlineRef = (template) => ({ url: null, contentHash: null, template });
+// What the state keeps of a content or template hash: 96 bits, too many to craft a collision with.
+// A shorter value written by an earlier version still matches as a prefix.
+const fingerprint = (h) => short(h, 24);
+const knownIn = (list, h) => list.some((x) => fingerprint(h).startsWith(x));
 
 function judgeInline(ctx, page, profile, template, visits) {
   const { section, st } = ctx;
@@ -19,12 +23,12 @@ function judgeInline(ctx, page, profile, template, visits) {
   const listing = entries.find((e) => e.template?.includes(template));
   if (listing) { ctx.markSeen('scripts', listing); return; }
   const deployEntry = entries.find((e) => e.trust === 'deploy');
-  const accepted = (st.inline[page.path] ?? []).includes(short(template));
+  const accepted = knownIn(st.inline[page.path] ?? [], template);
   if (deployEntry && (accepted || ctx.evident)) {
     ctx.markSeen('scripts', deployEntry);
     if (!accepted) {
       ctx.acceptByDeploy(`subject:${template}`);
-      st.inline[page.path] = [...(st.inline[page.path] ?? []), short(template)];
+      st.inline[page.path] = [...(st.inline[page.path] ?? []), fingerprint(template)];
       ctx.add({ ...base, kind: 'accepted', subject: `inline ${short(template)}`, page: page.path, severity: 'info', reasons: ['a new inline script came with a deploy'] });
     }
     return;
@@ -47,10 +51,11 @@ function trustedReferencer(ctx, url) {
 // A reported change is not adopted into the state: it is reported on every run until its hash is
 // approved on the entry (sha256), or, for an unversioned file, until a deploy is evident.
 // The hashes an own file has had, kept under its identity (fileIdentity): a few, for a file whose
-// variants differ by a query parameter (config.js?lang=en and ?lang=fr).
+// variants differ by a query parameter (config.js?lang=en and ?lang=fr; a handler such as
+// ScriptResource.axd?d=... serves many).
 const knownHashes = (st, k) => [st.ownHashes[k] ?? []].flat();
 function remember(st, k, hash) {
-  const list = [...new Set([...knownHashes(st, k), short(hash)])].slice(-8);
+  const list = [...new Set([...knownHashes(st, k), fingerprint(hash)])].slice(-64);
   st.ownHashes[k] = list.length === 1 ? list[0] : list;
 }
 
@@ -64,7 +69,7 @@ function judgeOwnFile(ctx, page, base, url, cls, obs, covering) {
   if (covering.some((e) => e.sha256?.includes(hash))) { remember(st, k, hash); return; }
   const immutable = cls.kind === 'hashed' || cls.kind === 'versioned';
   const data = { url, hash, page: page.path, sensitive: page.sensitive, slot: slotOf(url, cls), entryId: deployEntry.id };
-  if (prev && !knownHashes(st, k).includes(short(hash))) {
+  if (prev && !knownIn(knownHashes(st, k), hash)) {
     if (immutable) {
       ctx.add({ ...base, kind: 'in-place-change', subject: url, severity: 'high', reasons: [cls.kind === 'hashed' ? 'the content changed at a file name that carries a build token' : `the content of version ${cls.version} changed in place`], evidence: [hash], data });
     } else if (ctx.evident) {

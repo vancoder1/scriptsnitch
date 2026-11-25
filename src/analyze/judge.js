@@ -12,7 +12,6 @@ import { createCollector, scriptIdentity, bound } from './keys.js';
 import { DRILL_ORIGIN } from '../capture/drill.js';
 import { TRACKED_HEADERS } from './headers.js';
 import { isoDate } from '../util/time.js';
-import { short } from '../util/hash.js';
 
 const CONTENT_KINDS = new Set(['new-origin', 'new-slot', 'new-version', 'content-mismatch', 'in-place-change', 'own-change', 'new-own-script', 'build-file', 'new-inline', 'cloaking', 'accepted']);
 const BEHAVIOUR_SIGNS = new Set(['new-destination', 'listener', 'input-code', 'probe-exfil']);
@@ -146,9 +145,10 @@ function prune(st, pages) {
   const loaded = new Set([...urls].map((url) => ownKey(fileIdentity(url))));
   for (const k of Object.keys(st.ownHashes)) if (!loaded.has(k)) delete st.ownHashes[k];
   const templates = new Map();
-  for (const { v, path } of seen) for (const s of v.scripts) if (s.kind === 'inline') (templates.get(path) ?? templates.set(path, new Set()).get(path)).add(short(s.ref.template));
+  for (const { v, path } of seen) for (const s of v.scripts) if (s.kind === 'inline') (templates.get(path) ?? templates.set(path, new Set()).get(path)).add(s.ref.template);
   for (const path of Object.keys(st.inline)) {
-    const keep = st.inline[path].filter((t) => templates.get(path)?.has(t));
+    const loaded = [...(templates.get(path) ?? [])];
+    const keep = st.inline[path].filter((t) => loaded.some((full) => full.startsWith(t)));
     if (keep.length) st.inline[path] = keep;
     else delete st.inline[path];
   }

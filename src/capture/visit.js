@@ -144,12 +144,14 @@ async function probeVisit(ctx, session, page, profile, logs, scope, values, dril
   const { own, framesMode, extraSelectors } = scope;
   const before = await readDom(ctx, { own, framesMode, extraSelectors, refOf: () => null });
   drillHandle?.stop();
+  scope.proxy?.hold();
   const held = await holdNetwork(ctx);
   logs.net.setPhase('probe');
   const framesAtStart = logs.net.frames.length;
   await startCoverage(ctx, session.id);
   const result = await fillAndSubmit(ctx, before.fieldNodes, values, { touch: profile.hasTouch });
   const peers = await waitAndSample(ctx, session.id, page.sensitive ? 8000 : 3000);
+  if (held.failure) throw new Error(held.failure);
   const ran = await takeCoverage(ctx, session.id);
   const obs = await observe(ctx, session, page, logs, scope);
   const inputCode = [];
@@ -201,7 +203,7 @@ export async function visitPage(browser, page, profileName, options = {}) {
     let drillHandle = null;
     const loaded = await load(ctx, session, page, profile, logs, env, { beforeNavigate: drill ? async () => { drillHandle = await installDrill(ctx, session.id); } : null });
     const { reason } = loaded;
-    const scope = { own, framesMode, extraSelectors, cache };
+    const scope = { own, framesMode, extraSelectors, cache, proxy };
     let run = { obs: null, held: [], inputCode: [], peers: 0, fieldsBefore: [], probe: null };
     if (!reason && mode === 'probe') run = await probeVisit(ctx, session, page, profile, logs, scope, values, drillHandle);
     else if (!reason) run = { ...run, obs: await observe(ctx, session, page, logs, scope), peers: await countPeers(ctx, session.id) };

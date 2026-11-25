@@ -30,12 +30,21 @@ export async function holdNetwork(ctx) {
     const document = p.resourceType === 'Document';
     ctx.send('Fetch.fulfillRequest', { requestId: p.requestId, responseCode: document ? 204 : 200, responseHeaders: [{ name: 'content-type', value: 'text/plain' }], body: '' }, sessionId).catch(() => {});
   });
-  const hold = async (sessionId) => {
-    await ctx.send('Fetch.enable', { patterns: [{ urlPattern: '*', requestStage: 'Request' }] }, sessionId).catch(() => {});
-    await ctx.send('Network.emulateNetworkConditions', OFFLINE, sessionId).catch(() => {});
+  // A page or frame that cannot be held must stop the probe before anything is typed: failing open
+  // would let the fake values reach real servers. A dedicated worker's requests go through its page,
+  // which is held, and workers do not take these commands, so for them the hold is best effort.
+  const hold = async (session) => {
+    try {
+      await ctx.send('Fetch.enable', { patterns: [{ urlPattern: '*', requestStage: 'Request' }] }, session.id);
+      await ctx.send('Network.emulateNetworkConditions', OFFLINE, session.id);
+    } catch (e) {
+      if (session.type === 'page' || session.type === 'iframe') throw new Error(`the probe could not hold the network (${e.message})`);
+    }
   };
-  for (const s of ctx.sessions.values()) await hold(s.id);
-  ctx.onSession((s) => hold(s.id));
+  for (const s of ctx.sessions.values()) await hold(s);
+  // A frame that appears later and cannot be held makes the visit inconclusive afterwards.
+  Object.defineProperty(held, 'failure', { value: null, writable: true, enumerable: false });
+  ctx.onSession((s) => hold(s).catch((e) => { held.failure ??= e.message; }));
   return held;
 }
 

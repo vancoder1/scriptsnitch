@@ -76,15 +76,24 @@ export async function buildScripts(ctx, scriptLog, netLog, { frameOf, docUrls, i
     // one: an inline skimmer naming itself after an approved file would take that file's identity
     // (and its hash, from the real request). The name counts only for the file that was fetched at
     // that address with exactly this text; otherwise the script is judged as what it is.
-    let req = isWebUrl(p.url) ? netLog.scriptRequest(p.url, p.sessionId) : null;
+    let url = p.url;
+    let req = isWebUrl(url) ? netLog.scriptRequest(url, p.sessionId) : null;
     let bytes = req ? await bodyOf(req) : null;
-    if (p.sourceURL && !(bytes && asText(bytes) === source)) { req = null; bytes = null; }
+    if (p.sourceURL && !(bytes && asText(bytes) === source)) {
+      // A file fetched from elsewhere that calls itself something else keeps the address it came from.
+      req = null;
+      bytes = null;
+      for (const r of netLog.scriptRequests?.(p.sessionId) ?? []) {
+        const b = await bodyOf(r);
+        if (b && asText(b) === source) { req = r; bytes = b; url = r.url; break; }
+      }
+    }
     let kind;
-    if (p.wasm || /^(blob|data):/i.test(p.url)) kind = 'code';
+    if (p.wasm || /^(blob|data):/i.test(url)) kind = 'code';
     else if (creatorId) kind = 'code';
-    else if (!p.url) kind = 'code';
+    else if (!url) kind = 'code';
     else if (req) kind = 'external';
-    else if (p.sourceURL || !isWebUrl(p.url) || docUrls.get(p.sessionId)?.has(p.url) || fetchedDocs.has(p.url)) kind = 'inline';
+    else if (p.sourceURL || !isWebUrl(url) || docUrls.get(p.sessionId)?.has(url) || fetchedDocs.has(url)) kind = 'inline';
     else kind = 'external';
 
     const entry = { p, kind, source, frame, creatorId, request: null };
@@ -92,7 +101,7 @@ export async function buildScripts(ctx, scriptLog, netLog, { frameOf, docUrls, i
       entry.request = req;
       if (req?.initiator?.stack) entry.creatorId = firstScriptId(req.initiator.stack);
       bytes ??= Buffer.from(source, 'utf8');
-      entry.ref = { url: p.url, contentHash: sha256Hex(bytes), template: null };
+      entry.ref = { url, contentHash: sha256Hex(bytes), template: null };
       entry.sri = `sha384-${sha384Base64(bytes)}`;
     } else if (kind === 'inline') {
       entry.ref = { url: null, contentHash: null, template: templateOf(source).hash };

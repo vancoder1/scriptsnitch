@@ -100,6 +100,10 @@ export function createNetLog(ctx) {
       for (const r of requests.values()) if (r.type === 'Document') urls.add(r.url);
       return urls;
     },
+    // Every script a session fetched, for a script that gave itself another name.
+    scriptRequests(sessionId) {
+      return [...requests.values()].filter((r) => r.type === 'Script' && (sessionId === undefined || r.sessionId === sessionId) && !r.failed);
+    },
     destinationRequests() {
       return [...requests.values()].filter((r) => !NOT_DESTINATIONS.has(r.type) && !/^(data|blob):/i.test(r.url));
     },

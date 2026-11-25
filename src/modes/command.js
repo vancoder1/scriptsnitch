@@ -12,8 +12,10 @@ import { HttpError } from '../report/github.js';
 
 const WRITE = new Set(['admin', 'maintain', 'write']);
 const USAGE = 'I understand `/scriptsnitch approve <finding key> because <reason>` and `/scriptsnitch mute <finding key>`, one finding per comment. The finding keys are listed in this issue.';
-const APPROVE = /^\/scriptsnitch[ \t]+approve[ \t]+(\S+)(?:[ \t]+because\b([\s\S]*))?$/;
-const MUTE = /^\/scriptsnitch[ \t]+mute[ \t]+(\S+)[ \t]*$/;
+// Finding keys hold spaces (`new-field|top POST /login password password|*`): the key runs up to
+// " because ", or to the end of the line.
+const APPROVE = /^\/scriptsnitch[ \t]+approve[ \t]+(\S.*?)(?:[ \t]+because\b([\s\S]*))?$/;
+const MUTE = /^\/scriptsnitch[ \t]+mute[ \t]+(\S.*?)[ \t]*$/;
 const NOT_PERMITTED = /not permitted to create or approve pull requests/i;
 
 export async function handleComment({ event, github, approvedPath, botLogin = 'github-actions[bot]', base = 'main' }) {

@@ -103,13 +103,28 @@ test('mutes one finding', async () => {
   assert.equal(state.findings[KEY].muted, false);
 });
 
+test('a finding key with spaces in it is understood, to approve and to mute', async () => {
+  const spaced = findingKey('new-field', 'top POST /login password password');
+  const gh = createFakeGitHub({ permissions: { octocat: 'write' }, contents: { main: { [PATH]: serializeApproved(addPending(emptyApproved(), SITE, { finding: spaced, severity: 'high', into: 'fields', entry: { frame: 'top', form: 'POST /login', field: 'password', kind: 'password', pages: ['/login'], reason: 'TODO: why does this page need it?', approved: '2026-11-24' } })) } } });
+  await reconcileSite(gh, { site: SITE, findings: [finding(spaced, 'new-field', 'top POST /login password password', 'high'), finding(ROUTINE_KEY, 'new-destination', 'https://api.example', 'medium')], run: { conclusive: new Set(['/|desktop']) }, now: Date.UTC(2026, 10, 24), links: {}, diffs: new Map() });
+  const issue = [...(await readSites(gh)).values()][0].issue;
+  const r = await handle(gh, event(issue, `/scriptsnitch approve ${spaced} because The sign-in form`));
+  assert.equal(r.action, 'approved');
+  const pr = gh.state.pulls.find((p) => p.state === 'open');
+  assert.deepEqual(parseApproved(gh.file(PATH, pr.head.ref), PATH).sites[SITE].pending, []);
+  const m = await handle(gh, event(issue, `/scriptsnitch mute ${ROUTINE_KEY}  `));
+  assert.equal(m.action, 'muted');
+});
+
 test('never echoes hostile comment text unescaped', async () => {
   const { gh, issue } = await setup();
   await handle(gh, event(issue, '/scriptsnitch approve <img src=x onerror=alert(1)>@everyone|https://x.example|* because @octocat <b>hi</b> https://evil.example'));
   await handle(gh, event(issue, `/scriptsnitch frobnicate @team <script>`));
   for (const reply of replies(gh, issue)) {
-    assert.ok(!/<img|<script|<b>/.test(reply), reply);
-    assert.ok(!/(^|[^`])@everyone|(^|[^`])@team|https:\/\/evil/.test(reply.replace(/`[^`]*`/g, '')), reply);
+    // Inside a code span text shows as text; outside one nothing may render as HTML, a mention or a link.
+    const outside = reply.replace(/(`+)[\s\S]*?\1/g, '');
+    assert.ok(!/<img|<script|<b>/.test(outside), reply);
+    assert.ok(!/@everyone|@team|https:\/\/evil/.test(outside), reply);
   }
 });
 

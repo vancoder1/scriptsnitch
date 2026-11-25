@@ -15,7 +15,15 @@ export function createNetLog(ctx) {
 
   ctx.on('Network.requestWillBeSent', (p, sessionId) => {
     touch();
-    const existing = requests.get(p.requestId);
+    let existing = requests.get(p.requestId);
+    // A redirect keeps the request id. The hop that answered with it already received what was sent
+    // (a collector can answer 307 to an approved host), so it stays a request of its own.
+    if (existing && p.redirectResponse) {
+      let n = 1;
+      while (requests.has(`${p.requestId}#${n}`)) n++;
+      requests.set(`${p.requestId}#${n}`, { ...existing, requestId: `${p.requestId}#${n}`, status: p.redirectResponse.status, done: true });
+      existing = { sessionId: existing.sessionId, startedAt: Date.now(), done: false, phase: existing.phase };
+    }
     const entry = existing ?? { sessionId, startedAt: Date.now(), done: false, phase };
     Object.assign(entry, {
       requestId: p.requestId,

@@ -175,6 +175,14 @@ jobs:
           path: .scriptsnitch-action
           persist-credentials: false
 
+      - name: Make sure the action is this workflow's commit
+        env:
+          WANT: ${{ job.workflow_sha }}
+        run: |
+          # An empty ref would silently check out the default branch.
+          test -n "$WANT" || { echo "::error::job.workflow_sha is empty; this workflow needs GitHub.com"; exit 1; }
+          test "$(git -C .scriptsnitch-action rev-parse HEAD)" = "$WANT"
+
       - name: Validate
         uses: ./.scriptsnitch-action
         with:
@@ -205,6 +213,14 @@ jobs:
           ref: ${{ job.workflow_sha }}
           path: .scriptsnitch-action
           persist-credentials: false
+
+      - name: Make sure the action is this workflow's commit
+        env:
+          WANT: ${{ job.workflow_sha }}
+        run: |
+          # An empty ref would silently check out the default branch.
+          test -n "$WANT" || { echo "::error::job.workflow_sha is empty; this workflow needs GitHub.com"; exit 1; }
+          test "$(git -C .scriptsnitch-action rev-parse HEAD)" = "$WANT"
 
       - name: Handle the comment
         uses: ./.scriptsnitch-action

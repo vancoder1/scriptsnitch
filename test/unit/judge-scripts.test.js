@@ -90,9 +90,18 @@ test('build-file follows the chunk map and deploy evidence', () => {
   const appr = approved({ scripts: [entry({ id: 'build', match: `${SITE}/assets/*-{token}.js`, trust: 'deploy' })] });
   const st = () => { const s = state(); s.sites[SITE] = { entrySlots: { [`${SITE}/assets/index-{token}.js`]: 'B7kQ0aRz' }, marker: null, ownHashes: {}, inline: {}, deployTokens: [], seen: {}, domains: {}, domainCheck: null }; return s; };
   const entryJs = ext(`${SITE}/assets/index-B7kQ0aRz.js`);
-  assert.deepEqual(kinds(run(one('/', { scripts: [entryJs, ext(`${SITE}/assets/chunk-Dq9Wn3Lp.js`, { referenced: true, creator: `${SITE}/assets/index-B7kQ0aRz.js` })] }), appr, st())), []);
+  assert.deepEqual(kinds(run(one('/', { scripts: [entryJs, ext(`${SITE}/assets/chunk-Dq9Wn3Lp.js`, { referencedBy: [`${SITE}/assets/index-B7kQ0aRz.js`], creator: `${SITE}/assets/index-B7kQ0aRz.js` })] }), appr, st())), []);
   assert.deepEqual(kinds(run(one('/', { scripts: [entryJs, ext(`${SITE}/assets/evil-Zz9Yy8Xx.js`, { creator: `${SITE}/assets/index-B7kQ0aRz.js` })] }), appr, st())), ['build-file:medium']);
   assert.deepEqual(kinds(run(one('/', { scripts: [ext(`${SITE}/assets/index-C9xR1bTp.js`), ext(`${SITE}/assets/evil-Zz9Yy8Xx.js`, { creator: `${SITE}/assets/index-C9xR1bTp.js` })] }), appr, st())), []);
+});
+
+test('two files dropped in the build folder do not vouch for each other', () => {
+  const appr = approved({ scripts: [entry({ id: 'build', match: `${SITE}/assets/*-{token}.js`, trust: 'deploy' })] });
+  const st = () => { const s = state(); s.sites[SITE] = { entrySlots: { [`${SITE}/assets/index-{token}.js`]: 'B7kQ0aRz' }, marker: null, ownHashes: {}, inline: {}, deployTokens: [], seen: {}, domains: {}, domainCheck: null }; return s; };
+  const a = `${SITE}/assets/evil-Zz9Yy8Xx.js`;
+  const b = `${SITE}/assets/more-Qq7Ww6Ee.js`;
+  const scripts = [ext(`${SITE}/assets/index-B7kQ0aRz.js`), ext(a, { referencedBy: [b] }), ext(b, { creator: a, referencedBy: [a] })];
+  assert.deepEqual(kinds(run(one('/', { scripts }), appr, st())), ['build-file:medium', 'build-file:medium']);
 });
 
 test('what a deploy accepted, rather than an approval, is listed so its alerts are not cleared silently', () => {

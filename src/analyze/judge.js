@@ -109,6 +109,8 @@ function siteContext({ site, approved, status, snapshot, now, pages, includeVisi
     site, section, own, st, run: status.run, snapshot, now, evident, pages, includeVisit, changed, seenNow,
     markSeen: (sectionName, e) => { const k = seenKeyOf(sectionName, e); seenNow.add(k); st.seen[k] = today; },
     entry: { previous: st.entrySlots, current },
+    // Own files known before this run: only these, and entry files of known slots, vouch for others.
+    ownBaseline: new Set(Object.keys(st.ownHashes)),
     marker: currentMarker,
     firstRun: !approved.sites[site],
     inherit: (path, url, entries) => inherited.set(`${path} ${url}`, entries),

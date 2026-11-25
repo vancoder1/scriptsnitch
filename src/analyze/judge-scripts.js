@@ -33,6 +33,17 @@ function judgeInline(ctx, page, profile, template, visits) {
   ctx.add({ ...base, kind: 'new-inline', subject: template, page: page.path, severity, reasons: [page.sensitive && !ctx.evident ? 'a new inline script on a sensitive page, with no deploy' : 'a new inline script'], evidence: [template], data: { template, page: page.path, sensitive: page.sensitive } });
 }
 
+// A script whose source names a build file vouches for it only when it is trusted itself: known from
+// an earlier run, or the entry file of a slot the page loaded before (design §8, "an accepted own
+// script"). Two files dropped in the build folder that name each other vouch for nothing.
+function trustedReferencer(ctx, url) {
+  if (ctx.ownBaseline.has(ownKey(url))) return true;
+  const cls = classifyUrl(url);
+  const token = cls.token ?? cls.version ?? cls.queryVersion;
+  const slot = slotOf(url, cls);
+  return token !== undefined && ctx.entry.current[slot] === token && (!ctx.entry.previous || slot in ctx.entry.previous);
+}
+
 // A reported change is not adopted into the state: it is reported on every run until its hash is
 // approved on the entry (sha256), or, for an unversioned file, until a deploy is evident.
 function judgeOwnFile(ctx, page, base, url, cls, obs, covering) {
@@ -61,10 +72,11 @@ function judgeOwnFile(ctx, page, base, url, cls, obs, covering) {
     const entrySlot = slot in ctx.entry.current;
     // Loaded directly by the page and nothing to compare with yet (a first or stateless run).
     const known = entrySlot && (!ctx.entry.previous || slot in ctx.entry.previous);
-    if (known || buildFileAccepted({ token: cls.token, referenced: obs.referenced, evident: ctx.evident, deployTokens: st.deployTokens })) {
+    const referenced = (obs.referencedBy ?? []).some((u) => trustedReferencer(ctx, u));
+    if (known || buildFileAccepted({ token: cls.token, referenced, evident: ctx.evident, deployTokens: st.deployTokens })) {
       if (!entrySlot) ctx.acceptByDeploy(`content:${url}|${hash}`);
       st.ownHashes[ownKey(url)] = short(hash);
-      if (ctx.evident && !obs.referenced && !st.deployTokens.includes(cls.token)) st.deployTokens.push(cls.token);
+      if (ctx.evident && !referenced && !st.deployTokens.includes(cls.token)) st.deployTokens.push(cls.token);
       return;
     }
     ctx.add({ ...base, kind: 'build-file', subject: url, severity: page.sensitive ? 'high' : 'medium', reasons: [entrySlot ? 'a new file loaded directly by the page, in the build folder, with no deploy' : 'a new file in the build folder that the build does not name, with no deploy'], evidence: [hash], data });

@@ -162,12 +162,13 @@ export async function collect({ config, approved, outDir, executable, allowNoSan
     }
 
     for (const v of visits.filter((x) => x.conclusive && x.role !== 'drill')) {
-      // A hashed own file named in another own script's source is part of the build's chunk map.
+      // The own scripts whose source names a hashed own file's build token; the judge decides which of
+      // them may vouch for it (the build's chunk map does; a second dropped file does not).
       const ownSources = [...(v.sources?.values() ?? [])].filter((x) => x.url && own.has(originOf(x.url)));
       for (const s of v.scripts) {
         if (s.kind === 'external' && s.ref.url && own.has(originOf(s.ref.url))) {
           const token = classifyUrl(s.ref.url).token;
-          if (token) s.referenced = ownSources.some((x) => x.url !== s.ref.url && x.source.includes(token));
+          if (token) s.referencedBy = [...new Set(ownSources.filter((x) => x.url !== s.ref.url && x.source.includes(token)).map((x) => x.url))];
         }
       }
       for (const s of v.scripts) {

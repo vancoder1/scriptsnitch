@@ -25,7 +25,7 @@ const config = parseConfig(JSON.stringify({ notify: ['octocat'], profiles: ['des
 
 const dest = (url, by) => ({ url, method: 'GET', type: 'Fetch', frame: 'top', initiator: scriptRef(by), phase: 'load' });
 const observed = ({ index = INDEX, chunks = [CHUNK], extra = [], listeners = [], indexHash } = {}) => ({
-  scripts: [ext(index, indexHash ? { hash: indexHash } : {}), ...chunks.map((c) => ext(c, { creator: index, referenced: true })), ext(LIB), inline(T1), ...extra],
+  scripts: [ext(index, indexHash ? { hash: indexHash } : {}), ...chunks.map((c) => ext(c, { creator: index, referencedBy: [index] })), ext(LIB), inline(T1), ...extra],
   destinations: [dest(`${SITE}/api/ping`, index)],
   listeners,
   headers: { 'strict-transport-security': 'max-age=31536000' },

@@ -7,11 +7,11 @@ export const SITE = 'https://shop.example';
 export const H = (s) => sha256Hex(String(s));
 const ref = (url, contentHash, template = null) => ({ url, contentHash, template });
 
-export function ext(url, { hash = H(url), creator = null, frame = 'top', hosts = [], band = 'minified', createsCode = false, referenced = false } = {}) {
-  return { ref: ref(url, hash), kind: 'external', frame, creator: creator && ref(creator, H(creator)), hosts, band, createsCode, size: 100, sri: null, referenced };
+export function ext(url, { hash = H(url), creator = null, frame = 'top', hosts = [], band = 'minified', createsCode = false, referencedBy = [] } = {}) {
+  return { ref: ref(url, hash), kind: 'external', frame, creator: creator && ref(creator, H(creator)), hosts, band, createsCode, size: 100, sri: null, referencedBy };
 }
 export function inline(template, { hosts = [], band = 'plain', createsCode = false } = {}) {
-  return { ref: ref(null, null, template), kind: 'inline', frame: 'top', creator: null, hosts, band, createsCode, size: 50, sri: null, referenced: false };
+  return { ref: ref(null, null, template), kind: 'inline', frame: 'top', creator: null, hosts, band, createsCode, size: 50, sri: null, referencedBy: [] };
 }
 export function code(creatorUrl, { hosts = [] } = {}) {
   return { ref: ref(null, H(`code:${creatorUrl}`)), kind: 'code', frame: 'top', creator: creatorUrl && ref(creatorUrl, H(creatorUrl)), hosts, band: 'minified', createsCode: false, size: 10, sri: null, referenced: false };

@@ -29,8 +29,18 @@ function tokenInFilename(filename) {
   return null;
 }
 
+// A build id as a whole directory, in the layouts that use one: Next.js /_next/static/<buildId>/.
+// (Directories are not tested with isBuildToken in general: third-party paths are full of ids.)
+const NEXT_BUILD = /\/_next\/static\/([A-Za-z0-9_-]{8,64})\//;
+const NEXT_FOLDERS = new Set(['chunks', 'css', 'media', 'development', 'webpack']);
+function tokenInDirectory(pathname) {
+  const m = NEXT_BUILD.exec(pathname);
+  return m && !NEXT_FOLDERS.has(m[1]) ? m[1] : null;
+}
+
 const VERSION_PATTERNS = [
   /@(\d+\.\d+(?:\.\d+)*(?:-[0-9A-Za-z.]+)?)(?=\/|$)/, // npm CDNs: lib@3.7.1/
+  /\/version(\d{6,})(?=\/)/, // a deploy timestamp directory: Magento's /static/version1700000000/
   /\/v?(\d+\.\d+(?:\.\d+)*)(?=\/)/, // a version directory: /1.2.3/ or /v1.2.3/
   /-(\d+\.\d+(?:\.\d+)*)(?:\.min)?\.[mc]?js$/, // file name: modernizr-2.6.2.min.js
   /\.(\d+\.\d+\.\d+)(?:\.min)?\.[mc]?js$/, // file name: lib.1.2.3.js
@@ -61,7 +71,7 @@ export function classifyUrl(url) {
   const filename = u.pathname.split('/').pop() || '';
   const qv = queryVersion(u.searchParams);
   const extra = qv ? { queryVersion: qv.value } : {};
-  const token = tokenInFilename(filename);
+  const token = tokenInFilename(filename) ?? tokenInDirectory(u.pathname);
   if (token) return { kind: 'hashed', token, ...extra };
   const pv = pathVersion(u.pathname);
   if (pv) return { kind: 'versioned', version: pv.version, ...extra };

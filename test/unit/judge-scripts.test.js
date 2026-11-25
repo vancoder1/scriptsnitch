@@ -283,3 +283,12 @@ test('a versioned script from an unapproved origin is a new origin, whatever els
   const r = run(one('/', { scripts: [ext('https://evil.example/lib@1.0.0/lib.js')] }), approved({ scripts: [jqEntry] }));
   assert.deepEqual(kinds(r), ['new-origin:high']);
 });
+
+test('a Next.js deploy, which moves the build manifest to a new build id directory, raises nothing', () => {
+  const was = `${SITE}/_next/static/aB3dE5fG7hJ9kL1mN3pQ5/_buildManifest.js`;
+  const now = `${SITE}/_next/static/Zy9xW7vU5tS3rQ1pO9nM7/_buildManifest.js`;
+  const appr = approved({ scripts: [entry({ id: 'next', match: `${SITE}/_next/static/{token}/_buildManifest.js`, trust: 'deploy' })] });
+  const st = state();
+  st.sites[SITE] = { entrySlots: { [`${SITE}/_next/static/{token}/_buildManifest.js`]: 'aB3dE5fG7hJ9kL1mN3pQ5' }, marker: null, ownHashes: { [ownKey(was)]: H(was).slice(0, 12) }, inline: {}, deployTokens: [], seen: {}, domains: {}, domainCheck: null };
+  assert.deepEqual(kinds(run(one('/', { scripts: [ext(now)] }), appr, st)), []);
+});

@@ -38,6 +38,9 @@ function scriptTarget(d) {
   const u = new URL(d.url);
   if (d.own) {
     if (d.kind === 'hashed') return { match: folderPattern(d.slot), trust: 'deploy' };
+    // A version directory (Magento's /static/version{version}/) holds the whole build: one entry.
+    const dir = /^(.*\/[^/]*\{version\}[^/]*)\/.+\//.exec(d.slot);
+    if (d.kind === 'versioned' && dir) return { match: `${dir[1]}/**`, trust: 'deploy' };
     if (d.kind === 'versioned') return { match: d.slot.replace(/=\{version\}/g, '=*'), trust: 'deploy' };
     return { match: d.url, trust: 'deploy' };
   }

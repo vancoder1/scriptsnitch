@@ -185,3 +185,13 @@ test('a probe-exfil approval is a destination entry for that method and path, ne
   assert.equal(ps.length, 1, 'one proposal per endpoint');
   assert.deepEqual([ps[0].section, ps[0].mode, ps[0].entry.match, [...ps[0].entry.receives].sort(), ps[0].entry.pages], ['destinations', 'pending', `POST ${login}`, ['email', 'password'], ['/login']]);
 });
+
+test('own files under a build id directory are proposed as one deploy entry for the folder', () => {
+  const ps = propose(one('/', { scripts: [
+    ext(`${SITE}/_next/static/aB3dE5fG7hJ9kL1mN3pQ5/_buildManifest.js`),
+    ext(`${SITE}/static/version1700000000/frontend/Magento/luma/en_US/requirejs/require.js`),
+    ext(`${SITE}/static/version1700000000/frontend/Magento/luma/en_US/mage/common.js`),
+  ] }), approved({}));
+  const matches = ps.filter((p) => p.section === 'scripts').map((p) => `${p.entry.match} ${p.entry.trust}`).sort();
+  assert.deepEqual(matches, [`${SITE}/_next/static/{token}/_buildManifest.js deploy`, `${SITE}/static/version{version}/** deploy`]);
+});

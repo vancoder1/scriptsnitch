@@ -209,7 +209,10 @@ that came with it, both written by a real run against the demo site's tag-manage
 ```
 
 - `pages` lists page paths, with `*` and `**`; **a pattern never covers a sensitive page**, which must
-  be listed by its exact path. `own` names other origins that are yours.
+  be listed by its exact path. `own` names other origins that are yours. If your bundles come from a
+  separate asset host (`assets.shop.example`, a CDN in front of your build), add it to `own`:
+  otherwise its files are pinned as third-party files and every deploy reports each one. The first
+  approval pull request suggests the hosts that look like yours.
 - `destinations` approve where data may go. `receives` names the field kinds an endpoint may receive
   from the probe; without it, nothing typed into a form may reach it, **your own origin included**,
   because a collector planted on your own server is a favourite.

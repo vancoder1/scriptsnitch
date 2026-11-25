@@ -1,7 +1,7 @@
 // Script identity and content findings (design §10): new-origin, new-slot, scope, new-version,
 // content-mismatch, in-place-change, own-change, new-own-script, build-file, new-inline, cloaking.
 import { classifyUrl, slotOf, fileIdentity } from './urls.js';
-import { accountKey, accountKeyParams, sharedHostKind, vendorOf } from './hosts.js';
+import { accountKey, accountKeyParams, sharedHostKind, vendorOf, vendorOwnHosts } from './hosts.js';
 import { coveringScripts, originOf } from './approval.js';
 import { buildFileAccepted } from './deploy.js';
 import { matchUrl, coversPage } from '../config/patterns.js';
@@ -142,7 +142,10 @@ function judgeExternal(ctx, page, profile, url, observations, visits) {
   if (obs.creator?.url && !sharedHostKind(hostOf(url))) {
     const loaders = coveringScripts({ url: obs.creator.url, template: null }, section, page.path, page.sensitive).filter((e) => e.trust === 'origin');
     const creatorVendor = vendorOf(hostOf(obs.creator.url));
-    const sameVendor = originOf(obs.creator.url) === origin || (creatorVendor && creatorVendor === vendorOf(hostOf(url)));
+    // Across hosts, a cloud company's name is no guarantee (it covers buckets, ad creatives and web
+    // apps): only the hosts listed as its own code count.
+    const ownHosts = vendorOwnHosts(creatorVendor);
+    const sameVendor = originOf(obs.creator.url) === origin || (creatorVendor && creatorVendor === vendorOf(hostOf(url)) && (!ownHosts || ownHosts.includes(hostOf(url))));
     if (loaders.length && sameVendor && !accountKey(url)) {
       for (const e of loaders) ctx.markSeen('scripts', e);
       ctx.inherit(page.path, url, loaders);

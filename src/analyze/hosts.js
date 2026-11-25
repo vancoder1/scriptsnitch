@@ -8,13 +8,19 @@ const readData = (name) => readFileSync(new URL(`../../data/${name}`, import.met
 const SHARED = JSON.parse(readData('shared-hosts.json'));
 const ACCOUNT_KEYS = JSON.parse(readData('account-keys.json'));
 const VENDORS = JSON.parse(readData('vendor-families.json'));
+const { _comment: _ownHostsComment, ...OWN_HOSTS } = JSON.parse(readData('vendor-own-hosts.json'));
+
+// For a vendor whose name also covers hosting anyone can use, the hosts that serve its own code;
+// null for every other vendor.
+export const vendorOwnHosts = (vendor) => (vendor && Object.hasOwn(OWN_HOSTS, vendor) ? OWN_HOSTS[vendor] : null);
 const TLDS = new Set(readData('tlds.txt').split('\n').filter(Boolean));
 
-// Host globs: a leading "*." stands for one or more labels, an inner "*" for exactly one.
+// Host globs: a leading "*." stands for one or more labels, an inner "*" for exactly one, and a "*"
+// inside a label (s3-website-*) for the rest of that label.
 function globRegex(glob) {
   const body = glob
     .split('.')
-    .map((label, i) => (label === '*' ? (i === 0 ? '(?:[a-z0-9-]+\\.)*[a-z0-9-]+' : '[a-z0-9-]+') : label.replace(/-/g, '\\-')))
+    .map((label, i) => (label === '*' ? (i === 0 ? '(?:[a-z0-9-]+\\.)*[a-z0-9-]+' : '[a-z0-9-]+') : label.replace(/-/g, '\\-').replace(/\*/g, '[a-z0-9-]+')))
     .join('\\.');
   return new RegExp(`^${body}$`);
 }

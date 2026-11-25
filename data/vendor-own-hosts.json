@@ -1,0 +1,16 @@
+{
+  "_comment": "Vendor families whose name also covers hosting anyone can use (cloud storage, ad creatives, web apps). Across hosts, a script injected by such a vendor's approved loader inherits its trust only from these hosts, which serve the vendor's own code. Same-origin injection is unaffected.",
+  "Google": [
+    "www.google.com", "www.gstatic.com", "ssl.gstatic.com", "www.recaptcha.net",
+    "www.google-analytics.com", "ssl.google-analytics.com", "region1.google-analytics.com",
+    "www.googletagmanager.com", "www.googleadservices.com", "googleads.g.doubleclick.net",
+    "static.doubleclick.net", "pagead2.googlesyndication.com", "maps.googleapis.com", "maps.gstatic.com",
+    "apis.google.com", "accounts.google.com", "translate.googleapis.com", "translate.google.com",
+    "www.youtube.com", "s.ytimg.com", "pay.google.com"
+  ],
+  "Microsoft": [
+    "www.clarity.ms", "scripts.clarity.ms", "c.clarity.ms", "bat.bing.com", "js.monitor.azure.com",
+    "az416426.vo.msecnd.net"
+  ],
+  "Amazon Web Services": []
+}

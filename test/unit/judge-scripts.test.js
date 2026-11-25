@@ -275,6 +275,13 @@ test('no trust is inherited onto a host that serves anyone\'s files, even one th
   assert.deepEqual(injected(gtm, 'https://evil-abc123-uc.a.run.app/skim.js'), ['new-origin:high']);
   assert.deepEqual(injected('https://d111abcdef8.cloudfront.net/loader.js', 'https://d222evil.cloudfront.net/skim.js'), ['new-origin:high']);
   assert.deepEqual(injected(gtm, 'https://www.google-analytics.com/analytics.js'), [], 'the vendor\'s own hosts still inherit');
+  // A cloud company's name covers hosting: across hosts, only the hosts listed as its own code count.
+  assert.deepEqual(injected(gtm, 'https://evil-bucket.storage.googleapis.com/skim.js'), ['new-origin:high']);
+  assert.deepEqual(injected(gtm, 'https://www.googleapis.com/storage/v1/b/evil/o/skim.js?alt=media'), ['new-origin:high']);
+  assert.deepEqual(injected(gtm, 'https://tpc.googlesyndication.com/simgad/123/skim.js'), ['new-origin:high']);
+  assert.deepEqual(injected('https://static-na.payments-amazon.com/checkout.js', 'https://evil.s3-website-us-east-1.amazonaws.com/skim.js'), ['new-origin:high']);
+  assert.deepEqual(injected('https://www.clarity.ms/tag/abc', 'https://evil.web.core.windows.net/skim.js'), ['new-origin:high']);
+  assert.deepEqual(injected('https://www.google.com/recaptcha/api.js', 'https://www.gstatic.com/recaptcha/releases/abc/recaptcha__en.js'), []);
 });
 
 test('trust is inherited only from a loader approved with origin trust', () => {

@@ -145,24 +145,38 @@ function judgeProbe(ctx, page, profile, v, id) {
     ctx.add({ ...base, kind: 'probe-exfil', subject: endpoint, severity: 'high', attributedTo: h.initiator, reasons: [`a ${h.kind} value from the probe reached ${endpoint} (${h.encoding}), which may not receive it`], evidence: [clip(h.url)], data: { url: h.url, endpoint, kinds: [h.kind], approvable: true, page: page.path } });
   }
   const typed = [...new Set(v.fields.map((f) => f.kind).filter((k) => SENSITIVE.has(k)))].sort();
+  // growthFields names a part of the request: `query:<name>`, a body field's name, or '' for the whole body.
+  const part = (field) => (!field ? 'body' : field.startsWith('query:') ? `query parameter ${field.slice(6)}` : `body field ${field}`);
   for (const g of v.probe.growth) {
     const request = requestOf(g.url).url;
     let path = '';
     try { const u = new URL(request); path = `${u.origin}${u.pathname}`; } catch { path = ''; }
     if (path && STATIC_PATH.test(path)) {
-      ctx.add({ ...base, kind: 'probe-exfil', subject: `static ${path}`, severity: 'high', reasons: [`the ${g.field || 'body'} of a request to a static-file path grew with the length of the values typed; no approval can allow this`], evidence: [clip(request)], data: { url: request, kinds: typed.length ? typed : ['card'], approvable: false, page: page.path } });
+      ctx.add({ ...base, kind: 'probe-exfil', subject: `static ${path}`, severity: 'high', reasons: [`the ${part(g.field)} of a request to a static-file path grew with the length of the values typed; no approval can allow this`], evidence: [clip(request)], data: { url: request, kinds: typed.length ? typed : ['card'], approvable: false, page: page.path } });
       continue;
     }
     const entries = covering(g.url);
     if (entries.some((e) => e.receives?.length)) continue;
     const endpoint = endpointOf(requestOf(g.url).url, methodOf(g.url));
-    ctx.add({ ...base, kind: 'probe-exfil', subject: endpoint, severity: 'high', reasons: [`the ${g.field || 'body'} of a request to ${endpoint} grew with the length of the values typed, as an encrypted copy would`], evidence: [clip(g.url)], data: { url: g.url, endpoint, kinds: typed.length ? typed : ['card'], approvable: true, page: page.path } });
+    ctx.add({ ...base, kind: 'probe-exfil', subject: endpoint, severity: 'high', reasons: [`the ${part(g.field)} of a request to ${endpoint} grew with the length of the values typed, as an encrypted copy would`], evidence: [clip(g.url)], data: { url: g.url, endpoint, kinds: typed.length ? typed : ['card'], approvable: true, page: page.path } });
   }
   for (const s of v.probe.storage) {
     if (!STORAGE_KINDS.has(s.kind)) continue;
     ctx.add({ ...base, kind: 'probe-exfil', subject: `storage ${s.kind} ${s.where}`, severity: 'high', reasons: [`a ${s.kind} value from the probe was kept in ${s.where}; no approval can allow this`], data: { kinds: [s.kind], where: s.where, approvable: false, page: page.path } });
   }
 }
+
+// Where a listener sits, in words: "on the form holding a card field".
+const an = (word) => `${/^[aeiou]/i.test(word) ? 'an' : 'a'} ${word}`;
+const LISTENER_PLACES = {
+  field: (kind) => `${an(kind)} field`,
+  form: (kind) => `the form holding ${an(kind)} field`,
+  submit: (kind) => `the submit button of a form with ${an(kind)} field`,
+  ancestor: (kind) => `an element holding ${an(kind)} field`,
+  document: (kind) => `the document of a page with ${an(kind)} field`,
+  window: (kind) => `the window of a page with ${an(kind)} field`,
+};
+const listenerPlace = (l) => (LISTENER_PLACES[l.role] ?? ((kind) => `${an(kind)} ${l.role}`))(l.kind);
 
 function judgeListeners(ctx, page, profile, v, id) {
   for (const l of v.listeners) {
@@ -172,7 +186,7 @@ function judgeListeners(ctx, page, profile, v, id) {
     const listener = `${l.kind}:${l.role}:${l.event}`;
     const high = FIELD_ROLES.has(l.role) && !(entries.length && isOwnRef(ctx, l.script));
     const who = l.script ? labelOf(l.script, entries) : 'a script scriptsnitch could not name';
-    ctx.add({ site: ctx.site, profile, path: page.path, visits: [id], kind: 'listener', subject: `${labelOf(l.script, entries)} ${listener}`, severity: high ? 'high' : 'medium', attributedTo: l.script, reasons: [`${who} listens for ${l.event} on a ${l.kind} ${l.role}${entries.length ? ', which its entry does not approve' : ''}`], data: { listener, entryId: entries[0]?.id ?? null, script: l.script, page: page.path } });
+    ctx.add({ site: ctx.site, profile, path: page.path, visits: [id], kind: 'listener', subject: `${labelOf(l.script, entries)} ${listener}`, severity: high ? 'high' : 'medium', attributedTo: l.script, reasons: [`${who} listens for ${l.event} on ${listenerPlace(l)}${entries.length ? ', which its entry does not approve' : ''}`], data: { listener, entryId: entries[0]?.id ?? null, script: l.script, page: page.path } });
   }
 }
 

@@ -368,15 +368,28 @@ test('a probe value is judged against the request it was found in, with that req
 
 test('a payload that grows alone is High, and the finding names the part of the request that grew', () => {
   const appr = approved({ scripts: [appEntry({ input: true })], destinations: [{ match: SITE, pages: ['**', '/login'], reason: 'r', approved: '2026-11-01' }, { match: 'https://c2.example', pages: ['**', '/login'], reason: 'r', approved: '2026-11-01' }] });
-  const at = (url, growthUrl) => {
-    const p = { values: { password: 'pw-123456' }, submitted: true, hits: [], growth: [{ url: growthUrl, field: 'query:d' }], storage: [] };
+  const at = (url, growthUrl, field = 'query:d') => {
+    const p = { values: { password: 'pw-123456' }, submitted: true, hits: [], growth: [{ url: growthUrl, field }], storage: [] };
     return run(withProbe('/login', [ext(APP)], { destinations: [dest(url, { phase: 'probe' })], probe: p }, { sensitive: true }), appr).findings.filter((f) => f.kind === 'probe-exfil');
   };
   const pixel = at(`${SITE}/img/pixel.gif?d=xyz`, `${SITE}/img/pixel.gif`);
   assert.deepEqual(pixel.map((f) => `${f.subject}:${f.severity}`), [`static ${SITE}/img/pixel.gif:high`]);
-  assert.match(pixel[0].reasons[0], /the query:d of a request/);
+  assert.match(pixel[0].reasons[0], /^the query parameter d of a request/);
   const c2 = at('https://c2.example/p?d=xyz', 'https://c2.example/p');
-  assert.match(c2[0].reasons[0], /the query:d of a request to GET https:\/\/c2\.example\/p/);
+  assert.match(c2[0].reasons[0], /^the query parameter d of a request to GET https:\/\/c2\.example\/p/);
+  assert.match(at('https://c2.example/p', 'https://c2.example/p', 'p')[0].reasons[0], /^the body field p of a request/);
+  assert.match(at('https://c2.example/p', 'https://c2.example/p', '')[0].reasons[0], /^the body of a request/);
+});
+
+test('a listener reason says in words where the listener sits', () => {
+  const evil = 'https://evil.example/x.js';
+  const reasonFor = (kind, role, event) => run(one('/login', { scripts: [ext(APP), ext(evil)], listeners: [lis(kind, role, event, evil)] }, { sensitive: true }), approved({ scripts: [appEntry()] })).findings.find((f) => f.kind === 'listener').reasons[0];
+  assert.match(reasonFor('password', 'document', 'submit'), /listens for submit on the document of a page with a password field$/);
+  assert.match(reasonFor('email', 'field', 'input'), /listens for input on an email field$/);
+  assert.match(reasonFor('card', 'form', 'submit'), /listens for submit on the form holding a card field$/);
+  assert.match(reasonFor('card', 'submit', 'click'), /listens for click on the submit button of a form with a card field$/);
+  assert.match(reasonFor('card', 'ancestor', 'keyup'), /listens for keyup on an element holding a card field$/);
+  assert.match(reasonFor('card', 'window', 'beforeunload'), /listens for beforeunload on the window of a page with a card field$/);
 });
 
 test('a second card field with another name on an approved form is a new field', () => {

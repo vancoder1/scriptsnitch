@@ -72,3 +72,11 @@ test('applies the mobile profile to the page', async (t) => {
   assert.match(home.userAgent, /Android 14/);
   assert.doesNotMatch(home.userAgent, /HeadlessChrome/);
 });
+
+test('a page whose renderer stops answering ends the visit at its deadline', async (t) => {
+  if (!browser) return t.skip('no Chrome');
+  await site.setScenario('hang');
+  const started = Date.now();
+  await assert.rejects(visitPage(browser, page('/'), 'desktop', { own: new Set([site.origin('shop.test')]), deadlineMs: 4000 }), /stopped answering/);
+  assert.ok(Date.now() - started < 45000, `took ${Date.now() - started} ms`);
+});

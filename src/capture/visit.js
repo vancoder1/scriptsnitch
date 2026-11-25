@@ -187,8 +187,12 @@ async function probeVisit(ctx, session, page, profile, logs, scope, values, dril
   return { obs, held, inputCode, peers, fieldsBefore: before.fields, probe: { values, submitted, hits, growth: [], storage } };
 }
 
+// A visit that takes longer than this has stopped answering (a renderer stuck in a loop): its
+// context is closed and the visit is inconclusive. Steps that wait add to it.
+const VISIT_DEADLINE_MS = 180000;
+
 export async function visitPage(browser, page, profileName, options = {}) {
-  const { role = 'A', mode = 'plain', values = null, own = new Set([page.site]), frames: framesMode = 'own', cache = newCache(), env = process.env, random = Math.random, extraSelectors = {}, drill = false } = options;
+  const { role = 'A', mode = 'plain', values = null, own = new Set([page.site]), frames: framesMode = 'own', cache = newCache(), env = process.env, random = Math.random, extraSelectors = {}, drill = false, deadlineMs = VISIT_DEADLINE_MS } = options;
   const profile = profileFor(profileName, { chromeVersion: browser.version, random });
   // A probe visit runs through its own proxy, cut before the context goes (see proxy.js).
   const proxy = mode === 'probe' ? await startProxy({ rules: browser.hostRules ?? [] }) : null;
@@ -198,6 +202,12 @@ export async function visitPage(browser, page, profileName, options = {}) {
     else if (s.type === 'iframe') await applyProfile(ctx, s.id, profile, { frame: true });
   });
   const logs = { scripts: createScriptLog(ctx), net: createNetLog(ctx) };
+  // Many commands give up quietly on a page that does not answer, each after its own timeout, so the
+  // visit as a whole has a deadline: the context is closed, and the visit fails whatever it gathered.
+  const waits = (page.steps ?? []).reduce((sum, s) => sum + (typeof s.wait === 'number' ? s.wait : 0), 0);
+  let timedOut = false;
+  const timer = setTimeout(() => { timedOut = true; ctx.dispose().catch(() => {}); }, deadlineMs + waits);
+  const stopped = () => new Error(`the page stopped answering within ${Math.round((deadlineMs + waits) / 1000)} s`);
   try {
     const session = await ctx.newPage();
     let drillHandle = null;
@@ -229,10 +239,14 @@ export async function visitPage(browser, page, profileName, options = {}) {
     Object.defineProperty(visit, 'viewport', { value: profile.viewport, enumerable: false });
     Object.defineProperty(visit, 'held', { value: run.held, enumerable: false });
     Object.defineProperty(visit, 'links', { value: obs?.dom.anchors ?? [], enumerable: false });
+    if (timedOut) throw stopped();
     return visit;
+  } catch (e) {
+    throw timedOut ? stopped() : e;
   } finally {
+    clearTimeout(timer);
     proxy?.cut();
-    await ctx.dispose();
+    await ctx.dispose().catch((e) => { if (!timedOut) throw e; });
     await proxy?.close();
   }
 }

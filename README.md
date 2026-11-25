@@ -103,8 +103,10 @@ twice per profile (desktop and mobile), so values that change on every visit (ca
 tracking ids) are learned instead of reported. On pages with a password or card field, a **form probe**
 holds the network, types fake but valid-looking values (a Luhn-valid card number, an email, a
 password) with real key and mouse events, submits, waits, leaves the page, and records every request,
-WebSocket frame, beacon and storage write the page attempted. **Nothing reaches any server**: every
-request is answered locally and WebSocket connections are cut before the visit ends. scriptsnitch
+WebSocket frame, beacon and storage write the page attempted. **No request reaches a server**: every
+request is answered locally, no new connection is opened (or name looked up) while the network is
+held, and WebSocket connections are cut before the visit ends. A WebRTC peer connection is reported,
+not held: its traffic does not go through the browser's network stack. scriptsnitch
 never turns on the protocol domains pages can detect, and cookie-consent banners from the common
 managers are accepted, because most marketing tags load only after consent.
 
@@ -179,7 +181,9 @@ that came with it, both written by a real run against the demo site's tag-manage
   proposed for removal.
 - Commits pushed with the default `GITHUB_TOKEN` start no workflows, so a required `validate` check
   runs on the first commit a person pushes (filling in the reasons). Teams that want checks on every
-  bot commit can pass a GitHub App or fine-grained token as `github-token`.
+  bot commit can pass a GitHub App token as `github-token`. Not a fine-grained personal token: its
+  commits carry a person's name, and scriptsnitch never changes a branch a person has pushed to, so
+  the approval pull request would stop being updated.
 
 ### The approved file
 

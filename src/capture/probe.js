@@ -1,6 +1,6 @@
 // The form probe (design §11): fill forms with fake values like a person, submit, and record where
 // the page tries to send them, while Fetch answers every request locally and offline emulation stops
-// WebSocket frames. Nothing reaches any server.
+// WebSocket frames. No request reaches a server (a WebRTC peer connection is reported, not held).
 import { clickNode, typeText } from './steps.js';
 import { countPeers } from './peers.js';
 import { attrs } from './dom.js';

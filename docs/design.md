@@ -801,8 +801,9 @@ that edits `approved.json`. Only open High and Medium findings lead to proposals
 - **Checks.** Commits pushed with the default `GITHUB_TOKEN` trigger no workflows, so the `validate`
   check does not run on the bot's commits. Because the bot stops after a person's push, and a person
   must push to fill in TODO reasons, the last commit of a mergeable pull request is a person's
-  whenever `validate` is required. The README explains this, and accepts a GitHub App token or a
-  fine-grained token through `github-token` for teams that want checks on every bot commit.
+  whenever `validate` is required. The README explains this, and accepts a GitHub App token through
+  `github-token` for teams that want checks on every bot commit (a personal token's commits would be a
+  person's, which freezes the approval branch).
 - With `propose: issue`, or if the repository does not allow GitHub Actions to create pull requests
   (a 403 naming that setting), no pull request is opened: the issue shows the exact edits (and, for
   the 403, how to enable the setting).

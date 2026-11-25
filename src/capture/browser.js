@@ -55,6 +55,8 @@ function createContext(conn, browserContextId, forget) {
     // A page's root frame has no parent; an out-of-process iframe's root frame has the target's id.
     if (s && (!frame.parentId || frame.id === s.targetId)) s.url = frame.url;
   }));
+  // A frame that was removed or navigated to another process leaves: commands to its session fail.
+  unsubscribe.push(conn.on('Target.detachedFromTarget', ({ sessionId }) => { sessions.delete(sessionId); }));
 
   const ctx = {
     id: browserContextId,

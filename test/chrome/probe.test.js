@@ -107,3 +107,10 @@ test("scriptsnitch's own helper code is never reported as the page's", async (t)
   assert.deepEqual(visit.inputCode.filter((r) => !r.url && !r.template), [], 'no code without a URL or a creator ran during the input');
   assert.deepEqual(visit.scripts.filter((s) => s.kind === 'code' && !s.creator), []);
 });
+
+test('an iframe that came and went before the probe does not stop it', async (t) => {
+  if (!browser) return t.skip('no Chrome');
+  const { visit } = await probe('iframe-churn');
+  assert.equal(visit.conclusive, true);
+  assert.equal(visit.probe.submitted, true);
+});

@@ -38,7 +38,9 @@ export async function holdNetwork(ctx) {
       await ctx.send('Fetch.enable', { patterns: [{ urlPattern: '*', requestStage: 'Request' }] }, session.id);
       await ctx.send('Network.emulateNetworkConditions', OFFLINE, session.id);
     } catch (e) {
-      if (session.type === 'page' || session.type === 'iframe') throw new Error(`the probe could not hold the network (${e.message})`);
+      // A frame that was removed or navigated away has no session any more: nothing to hold there.
+      const gone = !ctx.sessions.has(session.id) || /session with given id not found|no session|target closed|detached/i.test(e.message);
+      if ((session.type === 'page' || session.type === 'iframe') && !gone) throw new Error(`the probe could not hold the network (${e.message})`);
     }
   };
   for (const s of ctx.sessions.values()) await hold(s);

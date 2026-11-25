@@ -41,7 +41,7 @@ function pagesInfo(snapshot, config) {
   const names = new Map(config.pages.map((p) => [`${p.site}${p.path}`, p.name]));
   return snapshot.pages.flatMap((p) => Object.entries(p.profiles).filter(([, r]) => r).map(([profile, r]) => {
     const probes = r.visits.filter((v) => v.probe && v.role !== 'drill');
-    return { site: p.site, path: p.path, name: names.get(`${p.site}${p.path}`) ?? p.name, profile, conclusive: r.conclusive, reason: r.reason, endedOn: endedOn(p, r), probed: probes.length > 0, submitted: probes.length ? probes.some((v) => v.probe.submitted) : null };
+    return { site: p.site, path: p.path, name: names.get(`${p.site}${p.path}`) ?? p.name, profile, conclusive: r.conclusive, reason: r.reason, endedOn: endedOn(p, r), probeLost: r.visits.find((v) => (v.role === 'probe' || v.role === 'probe2') && !v.conclusive)?.reason ?? null, probed: probes.length > 0, submitted: probes.length ? probes.some((v) => v.probe.submitted) : null };
   }));
 }
 

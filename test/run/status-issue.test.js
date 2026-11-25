@@ -152,3 +152,11 @@ test('a page that ended on another page of the site says so, with what to do abo
   assert.match(body, /conclusive, ended on `\/cart`/);
   assert.match(body, /add `steps` or `expect`/);
 });
+
+test('a probe that could not run says so on the status issue', async () => {
+  const gh = createFakeGitHub();
+  const info = runInfo();
+  info.pages[1].probeLost = 'the probe could not hold the network (Fetch.enable failed)';
+  await oneRun(gh, 0, info);
+  assert.match(statusIssues(gh)[0].body, /The probe could not run on Checkout[^\n]*could not hold the network/);
+});

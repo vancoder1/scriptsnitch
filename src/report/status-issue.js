@@ -42,6 +42,8 @@ function render({ state, run, now, notes }) {
     if (run.pages.some((p) => p.endedOn)) lines.push('', 'A page that ends on another page is judged where it ended. If that is not the page you meant to watch (an empty cart sends the checkout elsewhere), add `steps` or `expect` to it in the config.');
     lines.push('');
   }
+  const lost = run.pages.filter((p) => p.probeLost);
+  if (lost.length) lines.push(`The probe could not run on ${lost.map((p) => `${label(p)}: ${md(p.probeLost)}`).join('; ')}. Nothing typed into its forms was checked this run.`, '');
   const typedOnly = run.pages.filter((p) => p.probed && p.submitted === false);
   if (typedOnly.length) lines.push(`The probe filled the form but nothing left it on: ${typedOnly.map(label).join(', ')}. Check the page's steps and fields.`, '');
   if (run.drill) lines.push(`Fire drill: ${run.drill.result === 'pass' ? 'passed' : `**failed**, missed ${run.drill.missed.map(code).join(', ')}`}.`, '');

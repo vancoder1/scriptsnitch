@@ -1,8 +1,8 @@
 // Fire drills (design §12): inside the browser only, the page's document is served with a harmless
 // test skimmer from a domain that can never exist. It listens on sensitive fields and sends their
 // values on submit; the report checks that scriptsnitch raised the findings it should. Nothing
-// touches the site's server. The drill removes the page's CSP in its own visit so the test skimmer
-// can run at all.
+// touches the site's server. The drill turns the page's CSP off in its own visit (headers and <meta>
+// tags alike) so the test skimmer can run at all.
 
 export const DRILL_ORIGIN = 'https://drill.scriptsnitch.invalid';
 
@@ -45,6 +45,8 @@ export async function installDrill(ctx, sessionId) {
     }
     ctx.send('Fetch.continueRequest', { requestId: p.requestId }, sid).catch(() => {});
   });
+  // A <meta> CSP is not a header: only bypassing CSP for the drill visit's page reaches it.
+  await ctx.send('Page.setBypassCSP', { enabled: true }, sessionId);
   await ctx.send('Fetch.enable', { patterns: [{ urlPattern: `${DRILL_ORIGIN}/*`, requestStage: 'Request' }, { urlPattern: '*', resourceType: 'Document', requestStage: 'Response' }] }, sessionId);
   return {
     stop() {

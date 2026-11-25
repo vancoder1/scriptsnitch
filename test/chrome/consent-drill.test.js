@@ -55,3 +55,11 @@ test('a drill visit records the drill skimmer, its listener and its exfiltration
   assert.ok(v.probe.hits.some((h) => h.url.startsWith(DRILL_ORIGIN)), 'its exfiltration was caught');
   assert.equal(site.received.some((r) => r.method === 'POST'), false, 'nothing was submitted to the site');
 });
+
+test('the drill runs on a page whose CSP is set in a meta tag', async (t) => {
+  if (!browser) return t.skip('no Chrome');
+  await site.setScenario('meta-csp');
+  const v = await visitPage(browser, page('/login', { sensitive: true }), 'desktop', { role: 'drill', mode: 'probe', drill: true, values: probeValues(), own: new Set([site.origin('shop.test')]) });
+  assert.ok(v.scripts.some((s) => s.ref.url?.startsWith(DRILL_ORIGIN)), 'the drill script ran');
+  assert.ok(v.probe.hits.some((h) => h.url.startsWith(DRILL_ORIGIN)), 'its exfiltration was caught');
+});

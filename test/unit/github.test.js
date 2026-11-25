@@ -24,6 +24,15 @@ test('never retries a POST that timed out', async () => {
   assert.equal(s.requests.length, 1);
 });
 
+test('never retries a write: a PUT, PATCH or DELETE that went through would fail or repeat', async () => {
+  for (const call of [(gh) => gh.putContent('a.json', { text: '{}', branch: 'x', message: 'm' }), (gh) => gh.updateIssue(1, { body: 'b' }), (gh) => gh.deleteRef('heads/x')]) {
+    let calls = 0;
+    const gh = createGitHub({ token: 't', repo: 'acme/repo', backoff: () => 0, fetchImpl: async () => { calls += 1; return new Response('bad gateway', { status: 502 }); } });
+    await assert.rejects(call(gh), (e) => e instanceof HttpError && e.status === 502);
+    assert.equal(calls, 1);
+  }
+});
+
 test('retries a GET on 502 twice', async () => {
   const ok = scripted([{ status: 502 }, { status: 502 }, { json: [{ number: 1, title: 'a' }] }]);
   assert.deepEqual((await client(ok).listIssues({ state: 'open' })).map((i) => i.number), [1]);

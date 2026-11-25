@@ -26,7 +26,8 @@ export function createGitHub({ token, repo, apiUrl = 'https://api.github.com', f
 
   async function request(method, path, { body, raw = false, absolute = false } = {}) {
     const url = absolute ? path : `${apiUrl}${path}`;
-    const retries = method === 'POST' ? 0 : 2;
+    // Only reads are retried: a write that timed out or failed may have gone through (design §3).
+    const retries = method === 'GET' ? 2 : 0;
     let lastError;
     for (let attempt = 0; attempt <= retries; attempt++) {
       if (attempt > 0) await sleep(backoff(attempt));
@@ -88,7 +89,6 @@ export function createGitHub({ token, repo, apiUrl = 'https://api.github.com', f
       return r?.object?.sha ?? null;
     },
     createRef: (ref, sha) => repoCall('POST', '/git/refs', { body: { ref: `refs/${ref}`, sha } }),
-    updateRef: (ref, sha, force = false) => repoCall('PATCH', `/git/refs/${enc(ref)}`, { body: { sha, force } }),
     deleteRef: (ref) => repoCall('DELETE', `/git/refs/${enc(ref)}`),
     // Commits on head that base lacks, with their author logins, and how far head is behind.
     async compare(base, head) {

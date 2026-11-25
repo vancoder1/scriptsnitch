@@ -6,6 +6,7 @@ import { firstRunSplit } from '../../src/analyze/firstrun.js';
 import { findingKey } from '../../src/analyze/keys.js';
 import { DRILL_ORIGIN } from '../../src/capture/drill.js';
 import { SITE, H, ext, inline, code, scriptRef, visit, snapshot, entry, approved, config, state } from '../helpers/snapshots.js';
+import { ownKey } from '../../src/state.js';
 
 const run = (snap, appr, st = state()) => judge({ snapshot: snap, approved: appr, config: config(snap.pages.map((p) => ({ path: p.path, sensitive: p.sensitive }))), state: st, now: Date.UTC(2026, 10, 24) });
 const kinds = (r) => r.findings.map((f) => `${f.kind}:${f.severity}`).sort();
@@ -38,7 +39,7 @@ test('new-destination is High during the probe, High on a sensitive page from co
   assert.deepEqual(kinds(run(one('/login', { scripts, destinations: [dest('https://api.example/x', { viaCode: true })] }, { sensitive: true }), appr)), ['new-destination:high']);
   assert.deepEqual(kinds(run(one('/login', { scripts, destinations: [dest('https://api.example/x')] }, { sensitive: true }), appr)), ['new-destination:medium']);
   const changed = state();
-  changed.sites[SITE] = { entrySlots: {}, marker: null, ownHashes: { [APP]: H('before').slice(0, 12) }, inline: {}, deployTokens: [], seen: {}, domains: {}, domainCheck: null };
+  changed.sites[SITE] = { entrySlots: {}, marker: null, ownHashes: { [ownKey(APP)]: H('before').slice(0, 12) }, inline: {}, deployTokens: [], seen: {}, domains: {}, domainCheck: null };
   const r2 = run(one('/login', { scripts: [ext(APP, { hash: H('after') })], destinations: [dest('https://api.example/x')] }, { sensitive: true }), appr, changed);
   assert.ok(kinds(r2).includes('new-destination:high'));
 });
@@ -112,6 +113,17 @@ test('new-field is High for a new signature and for a count above approved', () 
   assert.deepEqual(kinds(at([field(2)], appr([approvedField]))), ['new-field:high']);
   assert.deepEqual(kinds(at([field(1)], appr([approvedField]))), []);
   assert.deepEqual(kinds(at([{ frame: 'top', form: 'POST /login', field: 'email', kind: 'email', count: 1 }], appr([]))), []);
+});
+
+test('a subject made of page text is bounded, stays the same each run and tells long ones apart', () => {
+  const longField = (tail) => ({ frame: 'top', form: 'POST /login', field: `${'x'.repeat(70000)}${tail}`, kind: 'password', count: 1 });
+  const at = (field) => run(one('/login', { scripts: [ext(APP)], fields: [field] }, { sensitive: true }), approved({ scripts: [appEntry()] })).findings[0];
+  const a = at(longField('a'));
+  assert.ok(a.subject.length <= 300, String(a.subject.length));
+  assert.ok(a.key.length <= 320);
+  assert.equal(at(longField('a')).key, a.key);
+  assert.notEqual(at(longField('b')).key, a.key);
+  assert.ok(a.observedAs.every((x) => x.length <= 320));
 });
 
 test('frame-field is High, new-frame Medium, own frames neither; peer-connection High without allow', () => {
@@ -289,15 +301,15 @@ test('new-script findings carry the behaviour seen, and header findings the valu
 test('state stays bounded: hashes, templates and entry slots of files no longer loaded go when every page was conclusive', () => {
   const appr = approved({ scripts: [entry({ id: 'build', match: `${SITE}/assets/*-{token}.js`, trust: 'deploy', pages: ['**', '/login'] }), entry({ id: 'in', match: 'inline', trust: 'deploy' })] });
   const st = state();
-  st.sites[SITE] = { entrySlots: { [`${SITE}/assets/index-{token}.js`]: 'B7kQ0aRz', [`${SITE}/assets/old-{token}.js`]: 'Aa11Bb22' }, marker: null, ownHashes: { [`${SITE}/assets/index-B7kQ0aRz.js`]: H(`${SITE}/assets/index-B7kQ0aRz.js`).slice(0, 12), [`${SITE}/assets/gone-Zz99Yy88.js`]: 'abcdefabcdef' }, inline: { '/': ['a'.repeat(12), 'f'.repeat(12)] }, deployTokens: [], seen: {}, domains: {}, domainCheck: null };
+  st.sites[SITE] = { entrySlots: { [`${SITE}/assets/index-{token}.js`]: 'B7kQ0aRz', [`${SITE}/assets/old-{token}.js`]: 'Aa11Bb22' }, marker: null, ownHashes: { [ownKey(`${SITE}/assets/index-B7kQ0aRz.js`)]: H(`${SITE}/assets/index-B7kQ0aRz.js`).slice(0, 12), [ownKey(`${SITE}/assets/gone-Zz99Yy88.js`)]: 'abcdefabcdef' }, inline: { '/': ['a'.repeat(12), 'f'.repeat(12)] }, deployTokens: [], seen: {}, domains: {}, domainCheck: null };
   const pages = (conclusive) => snapshot([
     { path: '/', observed: { scripts: [ext(`${SITE}/assets/index-B7kQ0aRz.js`), inline('a'.repeat(64))] } },
     { path: '/login', sensitive: true, conclusive, observed: { scripts: [ext(`${SITE}/assets/index-B7kQ0aRz.js`)] } },
   ]);
   const kept = run(pages(false), appr, st).state.sites[SITE];
-  assert.ok(`${SITE}/assets/gone-Zz99Yy88.js` in kept.ownHashes, 'kept while a page was inconclusive');
+  assert.ok(ownKey(`${SITE}/assets/gone-Zz99Yy88.js`) in kept.ownHashes, 'kept while a page was inconclusive');
   const pruned = run(pages(true), appr, st).state.sites[SITE];
-  assert.deepEqual(Object.keys(pruned.ownHashes), [`${SITE}/assets/index-B7kQ0aRz.js`]);
+  assert.deepEqual(Object.keys(pruned.ownHashes), [ownKey(`${SITE}/assets/index-B7kQ0aRz.js`)]);
   assert.deepEqual(Object.keys(pruned.entrySlots), [`${SITE}/assets/index-{token}.js`]);
   assert.deepEqual(pruned.inline['/'], ['a'.repeat(12)]);
 });

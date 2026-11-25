@@ -6,7 +6,7 @@
 import { readMarker, writeMarker } from '../report/markers.js';
 import { md, code } from '../report/text.js';
 import { parseApproved, emptyApproved, serializeApproved, approvePending, siteSection } from '../config/approved.js';
-import { startBranch, prTitle, findApprovalPull, ENABLE_PULL_REQUESTS } from '../report/pr.js';
+import { startBranch, prTitle, findApprovalPull, keyDigest, ENABLE_PULL_REQUESTS } from '../report/pr.js';
 import { LABEL } from '../report/status-issue.js';
 import { HttpError } from '../report/github.js';
 
@@ -55,7 +55,7 @@ export async function handleComment({ event, github, approvedPath, botLogin = 'g
   const file = await github.getContent(approvedPath, open?.head.ref ?? base);
   const approved = file ? parseApproved(file.text, approvedPath) : emptyApproved();
   if (!siteSection(approved, site).pending.some((p) => p.finding === key)) {
-    if (open && (readMarker(open.body, 'pr').keys ?? []).includes(key)) return respond(`${code(key)} is a routine proposal in #${open.number}: merging that pull request approves it. Write its reason there in place of the TODO.`, 'refused');
+    if (open && (readMarker(open.body, 'pr').keys ?? []).includes(keyDigest(key))) return respond(`${code(key)} is a routine proposal in #${open.number}: merging that pull request approves it. Write its reason there in place of the TODO.`, 'refused');
     return respond(`There is no pending proposal for ${code(key)} yet; the next scheduled run proposes it. Try again after that run.`, 'refused');
   }
 
@@ -69,7 +69,7 @@ export async function handleComment({ event, github, approvedPath, botLogin = 'g
   let number = open?.number;
   if (!number) {
     try {
-      number = (await github.createPull({ title: prTitle(site), head: target, base, body: writeMarker(`Approves ${code(key)}, as requested in #${issue.number} with the reason: ${md(reason)}.\n\nMerging this pull request is the approval of record.`, 'pr', { v: 1, site, keys: [key], deferred: [] }) })).number;
+      number = (await github.createPull({ title: prTitle(site), head: target, base, body: writeMarker(`Approves ${code(key)}, as requested in #${issue.number} with the reason: ${md(reason)}.\n\nMerging this pull request is the approval of record.`, 'pr', { v: 1, site, keys: [keyDigest(key)], deferred: [] }) })).number;
     } catch (e) {
       if (e instanceof HttpError && e.status === 403 && NOT_PERMITTED.test(`${e.body} ${e.message}`)) return respond(`Approved ${code(key)} on the branch ${code(target)}, but no pull request could be opened. ${ENABLE_PULL_REQUESTS} Or open one from that branch by hand.`, 'approved');
       throw e;

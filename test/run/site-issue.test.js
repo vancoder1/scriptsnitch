@@ -155,3 +155,15 @@ test('a subject with a pipe cannot break out of its table cell', async () => {
   const rows = issuesFor(gh)[0].body.split('\n').filter((l) => l.startsWith('|'));
   for (const row of rows) assert.equal(row.split(/(?<!\\)\|/).length - 2, 5, row);
 });
+
+test('hundreds of long findings still fit in one issue, which can be rewritten next run', async () => {
+  const gh = createFakeGitHub();
+  const many = Array.from({ length: 400 }, (_, i) => f('new-destination', `https://host-${i}.example/${'p'.repeat(250)}`, i % 3 ? 'medium' : 'high', { reasons: ['x'.repeat(400), 'y'.repeat(400)] }));
+  await step(gh, 0, many);
+  const [issue] = issuesFor(gh);
+  assert.ok(issue.body.length <= 65536, String(issue.body.length));
+  assert.match(issue.body, /and \d+ more/);
+  assert.ok(readMarker(issue.body, 'site'), 'the state is still readable');
+  await step(gh, 1, many);
+  assert.ok(issuesFor(gh)[0].body.length <= 65536);
+});

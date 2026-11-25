@@ -1,6 +1,13 @@
 // Finding keys (design §5 "Finding"): kind|subject|page. Stable across runs; changing how a key is
 // built rewrites every open issue.
-import { short } from '../util/hash.js';
+import { short, sha256Hex } from '../util/hash.js';
+
+// Page text in a subject or a reason (a field name, a URL) can be any length. A long one keeps its
+// start and a hash of the whole, so keys stay short, the same every run, and distinct.
+export function bound(text, max = 300) {
+  const s = String(text);
+  return s.length <= max ? s : `${s.slice(0, max - 14)}…${short(sha256Hex(s))}`;
+}
 
 export const findingKey = (kind, subject, page = '*') => `${kind}|${subject}|${page}`;
 
@@ -27,7 +34,10 @@ export function scriptIdentity(ref) {
 export function createCollector() {
   const byKey = new Map();
   return {
-    add({ kind, subject, page = '*', path = page, severity, site, profile, visits = [], reasons = [], evidence = [], attributedTo = null, data = {}, drill = false }) {
+    add({ kind, subject: rawSubject, page = '*', path = page, severity, site, profile, visits = [], reasons: rawReasons = [], evidence: rawEvidence = [], attributedTo = null, data = {}, drill = false }) {
+      const subject = bound(rawSubject);
+      const reasons = rawReasons.map((r) => bound(r, 500));
+      const evidence = rawEvidence.map((e) => bound(e, 500));
       const key = findingKey(kind, subject, page);
       let f = byKey.get(key);
       if (!f) {

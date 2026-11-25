@@ -8,6 +8,7 @@ import { applyProposals } from '../analyze/proposals.js';
 import { readMarker, writeMarker } from './markers.js';
 import { md, code, cellCode, fence } from './text.js';
 import { HttpError } from './github.js';
+import { short, sha256Hex } from '../util/hash.js';
 
 const NOT_PERMITTED = /not permitted to create or approve pull requests/i;
 const SECOND_LEVEL = new Set(['co', 'com', 'net', 'org', 'gov', 'ac', 'edu']);
@@ -17,6 +18,12 @@ export const ENABLE_PULL_REQUESTS = 'GitHub Actions is not allowed to open pull 
 const hostOf = (url) => { try { return new URL(url).host; } catch { return url; } };
 const keyOf = (p) => p.finding ?? `${p.section}|${p.id ?? entryKey(p.section, p.entry ?? {})}|${p.remove ? 'remove' : 'change'}`;
 const keysOf = (p) => [keyOf(p), ...(p.also ?? [])];
+// The marker names the findings a pull request proposes by a digest of each key, so that hundreds
+// of long keys still fit in the body.
+export const keyDigest = (key) => short(sha256Hex(key));
+const digestsOf = (p) => keysOf(p).map(keyDigest);
+const BODY_LIMIT = 60000;
+const LONGEST_PROPOSAL = 4000;
 export const branchFor = (site) => `scriptsnitch/approve-${hostOf(site).replace(/:/g, '-')}`;
 export const prTitle = (site) => `scriptsnitch: approve changes on ${hostOf(site)}`;
 
@@ -71,26 +78,35 @@ function describe(p, c = code) {
   return `add ${Object.entries(p.add).map(([k, v]) => `${c(k)} ${c(JSON.stringify(v))}`).join(', ')} to ${p.section} entry ${c(p.id)}`;
 }
 
-const rows = (list) => ['| Severity | Change | Finding |', '| --- | --- | --- |', ...list.map((p) => `| ${BADGE[p.severity] ?? 'routine'} | ${describe(p, cellCode)} | ${p.finding ? cellCode(p.finding) : ''} |`)];
+const rows = (list, max = Infinity) => ['| Severity | Change | Finding |', '| --- | --- | --- |', ...list.slice(0, max).map((p) => `| ${BADGE[p.severity] ?? 'routine'} | ${describe(p, cellCode)} | ${p.finding ? cellCode(p.finding) : ''} |`), ...(list.length > max ? [`| | …and ${list.length - max} more, all in this pull request's file changes | |`] : [])];
 
-function renderBody({ site, path, proposals, liveKeys, known, approved }) {
+function renderBody({ site, path, proposals, goneCount, approved, maxRows = Infinity }) {
   const pending = proposals.filter((p) => p.mode === 'pending');
   const routine = proposals.filter((p) => p.mode === 'routine');
   const lines = [`scriptsnitch proposes these changes to ${code(path)} for ${md(site)}. Check each one, replace every ${code('TODO')} reason with why the page needs it, then merge.`, ''];
   if (pending.length) {
-    lines.push('> [!WARNING]', '> **Pending: merging this pull request does not approve these.** They are High findings, added only to the site\'s `pending` list. Investigate each one first. To approve one, move it into the live section by hand, run `scriptsnitch approve --id <finding key>`, or comment `/scriptsnitch approve <finding key> because <reason>` on the site issue.', '', ...rows(pending), '');
+    lines.push('> [!WARNING]', '> **Pending: merging this pull request does not approve these.** They are High findings, added only to the site\'s `pending` list. Investigate each one first. To approve one, move it into the live section by hand, run `scriptsnitch approve --id <finding key>`, or comment `/scriptsnitch approve <finding key> because <reason>` on the site issue.', '', ...rows(pending, maxRows), '');
   }
-  if (routine.length) lines.push('**Routine: merging approves these.**', '', ...rows(routine), '');
+  if (routine.length) lines.push('**Routine: merging approves these.**', '', ...rows(routine, maxRows), '');
   const sri = proposals.filter((p) => p.sri && p.entry?.trust === 'exact');
-  if (sri.length) lines.push('Third-party files with fixed content can also be pinned in your HTML with Subresource Integrity:', '', ...sri.map((p) => `- ${code(`<script src="${p.entry.match}" integrity="${p.sri}" crossorigin="anonymous"></script>`)}`), '');
+  if (sri.length) lines.push('Third-party files with fixed content can also be pinned in your HTML with Subresource Integrity:', '', ...sri.slice(0, maxRows).map((p) => `- ${code(`<script src="${p.entry.match}" integrity="${p.sri}" crossorigin="anonymous"></script>`)}`), '');
   const own = new Set(siteSection(approved, site).own);
   const ownLike = [...new Set(proposals.filter((p) => p.entry?.match && /^[a-z]+:\/\//i.test(p.entry.match)).map((p) => new URL(p.entry.match.replace(/\*\./, 'x.').replace(/\{token\}|\{version\}|\*/g, 'x')).origin))]
     .filter((o) => o !== site && !own.has(o) && siteOf(hostOf(o)) === siteOf(hostOf(site)));
   if (ownLike.length) lines.push(`These look like your own: ${ownLike.map(code).join(', ')}. If they are, add them to ${code('own')} in the approved file; scriptsnitch never does that by itself.`, '');
-  const gone = [...known].filter((k) => !liveKeys.has(k));
-  if (gone.length) lines.push('No longer live (approving these approves something that is gone):', '', ...gone.map((k) => `- ${code(k)}`), '');
+  if (goneCount) lines.push(`${goneCount} of the changes in this pull request ${goneCount === 1 ? 'is' : 'are'} no longer live: approving ${goneCount === 1 ? 'it approves' : 'them approves'} something that is gone. The site issue lists what vanished.`, '');
   lines.push('Commits pushed with the default `GITHUB_TOKEN` start no workflows, so a required `validate` check runs once a person pushes, such as the commit that fills in the reasons.');
   return lines.join('\n');
+}
+
+// The body with its marker, with fewer table rows until it fits GitHub's limit.
+function prBody(args, markerData) {
+  let body;
+  for (const maxRows of [Infinity, 200, 100, 50, 25, 12, 6]) {
+    body = writeMarker(renderBody({ ...args, maxRows }), 'pr', markerData);
+    if (body.length <= BODY_LIMIT) break;
+  }
+  return body;
 }
 
 export function renderEdits(site, proposals, path) {
@@ -119,6 +135,8 @@ function readableProposals(site, proposals, path) {
   const ok = [];
   const rejected = [];
   for (const p of proposals) {
+    const size = JSON.stringify(p.entry ?? p.add ?? {}).length;
+    if (size > LONGEST_PROPOSAL) { rejected.push({ key: keyOf(p), why: `it is too long to write into the approved file (${size} characters)` }); continue; }
     try {
       parseApproved(serializeApproved(applyProposals(emptyApproved(), site, [p])), path);
       ok.push(p);
@@ -138,7 +156,7 @@ async function syncReadable(github, { site, live, approvedPath, base, propose })
   const edits = renderEdits(site, live, approvedPath);
   if (propose === 'issue') return { prNumber: null, fallback: live.length ? 'issue' : null, edits };
   const host = hostOf(site);
-  const liveKeys = new Set(live.flatMap(keysOf));
+  const liveKeys = new Set(live.flatMap(digestsOf));
   const title = prTitle(site);
 
   const open = findApprovalPull(await github.listPulls({ state: 'open' }), site);
@@ -149,25 +167,25 @@ async function syncReadable(github, { site, live, approvedPath, base, propose })
     const deferred = new Set(marker.deferred ?? []);
     const cmp = await github.compare(base, head);
     const touched = cmp.commits.some((c) => !byBot(c.author));
-    const fresh = live.filter((p) => !keysOf(p).some((k) => known.has(k)));
+    const fresh = live.filter((p) => !digestsOf(p).some((k) => known.has(k)));
     let approved = parseFile(await github.getContent(approvedPath, head), approvedPath);
     if (!touched && fresh.length) {
       approved = await writeFile(github, { path: approvedPath, branch: head, site, proposals: fresh, message: `scriptsnitch: propose ${fresh.length} more change${fresh.length === 1 ? '' : 's'} on ${host}` });
-      for (const p of fresh) for (const k of keysOf(p)) known.add(k);
+      for (const p of fresh) for (const k of digestsOf(p)) known.add(k);
     }
     if (![...known].some((k) => liveKeys.has(k))) {
       await github.createComment(open.number, 'None of the findings this pull request proposes is live any more, so scriptsnitch closes it: merging it would approve things that are gone.');
       await github.updatePull(open.number, { state: 'closed' });
       if (!touched) await github.deleteRef(`heads/${head}`).catch(() => {});
     } else {
-      const untold = touched ? fresh.filter((p) => !keysOf(p).some((k) => deferred.has(k))) : [];
+      const untold = touched ? fresh.filter((p) => !digestsOf(p).some((k) => deferred.has(k))) : [];
       if (untold.length) {
-        await github.createComment(open.number, [`New finding${untold.length === 1 ? '' : 's'} not in this pull request, because a person has pushed to its branch and scriptsnitch no longer changes it:`, ...untold.map((p) => `- ${describe(p)} (${code(keyOf(p))})`), '', 'They will come in the next one, opened after this one is merged or closed.'].join('\n'));
-        for (const p of untold) for (const k of keysOf(p)) deferred.add(k);
+        await github.createComment(open.number, [`New finding${untold.length === 1 ? '' : 's'} not in this pull request, because a person has pushed to its branch and scriptsnitch no longer changes it:`, ...untold.slice(0, 50).map((p) => `- ${describe(p)} (${code(keyOf(p))})`), ...(untold.length > 50 ? [`- …and ${untold.length - 50} more`] : []), '', 'They will come in the next one, opened after this one is merged or closed.'].join('\n'));
+        for (const p of untold) for (const k of digestsOf(p)) deferred.add(k);
       }
       if (!touched && cmp.behindBy > 0) await github.updateBranch(open.number).catch((e) => { if (!(e instanceof HttpError && e.status === 422)) throw e; });
-      const listed = live.filter((p) => keysOf(p).some((k) => known.has(k)));
-      const body = writeMarker(renderBody({ site, path: approvedPath, proposals: listed, liveKeys, known, approved }), 'pr', { v: 1, site, keys: [...known], deferred: [...deferred] });
+      const listed = live.filter((p) => digestsOf(p).some((k) => known.has(k)));
+      const body = prBody({ site, path: approvedPath, proposals: listed, goneCount: [...known].filter((k) => !liveKeys.has(k)).length, approved }, { v: 1, site, keys: [...known], deferred: [...deferred] });
       await github.updatePull(open.number, { title, body });
       return { prNumber: open.number, fallback: null, edits };
     }
@@ -176,7 +194,7 @@ async function syncReadable(github, { site, live, approvedPath, base, propose })
 
   const branch = await startBranch(github, { site, base });
   const approved = await writeFile(github, { path: approvedPath, branch, site, proposals: live, message: `scriptsnitch: propose ${live.length} change${live.length === 1 ? '' : 's'} on ${host}` });
-  const body = writeMarker(renderBody({ site, path: approvedPath, proposals: live, liveKeys, known: liveKeys, approved }), 'pr', { v: 1, site, keys: [...liveKeys], deferred: [] });
+  const body = prBody({ site, path: approvedPath, proposals: live, goneCount: 0, approved }, { v: 1, site, keys: [...liveKeys], deferred: [] });
   try {
     return { prNumber: (await github.createPull({ title, head: branch, base, body })).number, fallback: null, edits };
   } catch (err) {

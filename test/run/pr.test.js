@@ -162,3 +162,22 @@ test('a proposal the approved file could not read back is left out and reported,
   assert.deepEqual(branchFile(gh).scripts.map((e) => e.id), ['chat-b', 'mine'], 'the file on the branch still loads');
   assert.ok(!gh.state.pulls[0].body.includes('a*.js'));
 });
+
+test('hundreds of proposals still fit in one pull request body', async () => {
+  const gh = fresh();
+  const many = Array.from({ length: 300 }, (_, i) => routine(`w${i}-${'p'.repeat(300)}`));
+  const r = await sync(gh, many);
+  const pr = gh.state.pulls.find((p) => p.number === r.prNumber);
+  assert.ok(pr.body.length <= 65536, String(pr.body.length));
+  assert.match(pr.body, /and \d+ more/);
+  assert.equal(branchFile(gh).scripts.length, 301, 'every proposal is in the file');
+  await sync(gh, [...many, routine('late')]);
+  assert.ok(gh.state.pulls.find((p) => p.number === r.prNumber).body.length <= 65536);
+});
+
+test('a proposal too long to write into the approved file is left out and reported', async () => {
+  const gh = fresh();
+  const r = await sync(gh, [routine(`x${'p'.repeat(5000)}`), routine('b')]);
+  assert.equal(r.rejected.length, 1);
+  assert.match(r.rejected[0].why, /too long/);
+});

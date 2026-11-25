@@ -2,7 +2,7 @@
 // approved. A comment (which notifies) only when a new finding key appears. A Medium drops off after
 // two conclusive runs without it and returns silently within 30 days; a vanished High stays listed
 // until a person closes the issue. Closing by hand mutes what is in it; a new key reopens it.
-import { readMarker, writeMarker } from './markers.js';
+import { readMarker, writeMarker, markerText, fitSiteState } from './markers.js';
 import { md, code, cellCode } from './text.js';
 import { emptySiteState } from '../state.js';
 import { isoDate, daysBetween } from '../util/time.js';
@@ -11,6 +11,7 @@ import { LABEL } from './status-issue.js';
 const KEEP_DROPPED_DAYS = 30;
 const KEEP_MUTED_DAYS = 90;
 const BODY_LIMIT = 60000;
+const MARKER_LIMIT = 30000;
 const BADGE = { high: '🔴 High', medium: '🟠 Medium' };
 
 export async function readSites(github) {
@@ -28,21 +29,22 @@ export async function readSites(github) {
 const hostOf = (site) => { try { return new URL(site).host; } catch { return site; } };
 // `c` is the code span to use: cellCode inside a table, code elsewhere.
 const where = (e, c = code) => `${(e.seenOn?.length ? e.seenOn : [e.page]).map(c).join(', ')}${e.profiles?.length ? ` (${e.profiles.map(md).join(', ')})` : ''}`;
+const more = (n, what) => (n > 0 ? [`…and ${n} more ${what}; report.json and the job summary list everything.`, ''] : []);
 const row = (key, e, today, links) => {
   const gone = e.last !== today ? `**Not seen since ${e.last}.** ` : '';
-  const why = `${gone}${e.reasons.map(md).join('<br>')}${links.evidenceUrl ? ` [evidence](${links.evidenceUrl})` : ''}`;
+  const why = `${gone}${(e.reasons ?? []).map(md).join('<br>')}${links.evidenceUrl ? ` [evidence](${links.evidenceUrl})` : ''}`;
   const approve = e.severity === 'high' ? 'pending' : 'routine';
   return `| ${BADGE[e.severity] ?? e.severity} | ${cellCode(e.kind)} ${cellCode(e.subject)} | ${where(e, cellCode)} | ${why} | ${links.prUrl ? `[${approve}](${links.prUrl})` : approve} |`;
 };
-const table = (entries, today, links) => ['| Severity | Finding | Where | Why | To approve |', '| --- | --- | --- | --- | --- |', ...entries.map(([k, e]) => row(k, e, today, links))].join('\n');
+const table = (entries, today, links, max = Infinity) => [['| Severity | Finding | Where | Why | To approve |', '| --- | --- | --- | --- | --- |', ...entries.slice(0, max).map(([k, e]) => row(k, e, today, links))].join('\n'), '', ...more(entries.length - max, 'findings')].join('\n').trimEnd();
 const order = ([, a], [, b]) => Number(b.severity === 'high') - Number(a.severity === 'high') || a.first.localeCompare(b.first);
 
-function render({ site, active, muted, today, links, diffs, firstRun, notify, edits, withDiffs = true }) {
+function render({ site, active, muted, today, links, diffs, firstRun, notify, edits, withDiffs = true, maxRows = Infinity }) {
   const lines = [];
   if (firstRun) lines.push('> Nothing is approved for this site yet. Everything below was seen on its first run: this inventory is only as clean as the site is today. Review it in the approval pull request before merging.', '');
   if (active.length) {
-    lines.push(`**${active.length} unapproved change${active.length === 1 ? '' : 's'} on ${md(site)}.** Last checked ${today}${links.runUrl ? ` ([run](${links.runUrl}))` : ''}.`, '', table(active, today, links), '');
-    lines.push('<details><summary>Finding keys</summary>', '', ...active.map(([k]) => `- ${code(k)}`), '', '</details>', '');
+    lines.push(`**${active.length} unapproved change${active.length === 1 ? '' : 's'} on ${md(site)}.** Last checked ${today}${links.runUrl ? ` ([run](${links.runUrl}))` : ''}.`, '', table(active, today, links, maxRows), '');
+    lines.push('<details><summary>Finding keys</summary>', '', ...active.slice(0, maxRows).map(([k]) => `- ${code(k)}`), '', ...more(active.length - maxRows, 'keys'), '</details>', '');
     if (withDiffs) {
       for (const [k, e] of active) {
         if (diffs?.has(k)) lines.push(`<details><summary>What changed: ${md(e.subject)}</summary>`, '', diffs.get(k), '', '</details>', '');
@@ -52,8 +54,8 @@ function render({ site, active, muted, today, links, diffs, firstRun, notify, ed
   } else {
     lines.push(`Nothing unapproved is live on ${md(site)}. Last checked ${today}${links.runUrl ? ` ([run](${links.runUrl}))` : ''}.`, '');
   }
-  if (edits && active.length) lines.push('<details><summary>Proposed edits to the approved file</summary>', '', edits, '', '</details>', '');
-  if (muted.length) lines.push(`<details><summary>Muted (${muted.length})</summary>`, '', table(muted, today, links), '', '</details>', '');
+  if (edits && active.length) lines.push('<details><summary>Proposed edits to the approved file</summary>', '', maxRows === Infinity ? edits : 'Too long to show here: the job summary has them.', '', '</details>', '');
+  if (muted.length) lines.push(`<details><summary>Muted (${muted.length})</summary>`, '', table(muted, today, links, maxRows), '', '</details>', '');
   if (notify.length) lines.push(`cc ${notify.map((n) => `@${n}`).join(' ')}`);
   return lines.join('\n').trimEnd();
 }
@@ -81,9 +83,10 @@ export async function reconcileSite(github, { site, issue = null, siteState = nu
     if (live.has(k) || e.droppedAt) continue;
     // Still observed but no longer raised: approved or accepted, so resolved without a word.
     if (e.observedAs?.some((x) => run.observed?.has(x))) { delete st.findings[k]; continue; }
-    const pairs = (e.seenOn.length ? e.seenOn : [e.page]).flatMap((p) => (e.profiles.length ? e.profiles : ['desktop']).map((pr) => `${p}|${pr}`));
+    const seenOn = e.seenOn ?? [];
+    const pairs = (seenOn.length ? seenOn : [e.page]).flatMap((p) => (e.profiles?.length ? e.profiles : ['desktop']).map((pr) => `${p}|${pr}`));
     // A finding with no page (a domain finding) is absent only when a check no longer raised it.
-    if (!e.seenOn.length || pairs.every((x) => run.conclusive.has(x))) e.missed += 1;
+    if (!seenOn.length || pairs.every((x) => run.conclusive.has(x))) e.missed += 1;
     if (e.severity !== 'high' && e.missed >= 2) e.droppedAt = today;
   }
 
@@ -102,17 +105,21 @@ export async function reconcileSite(github, { site, issue = null, siteState = nu
   st.closedByBot = action === 'close' || (action === 'keep' && prev.closedByBot);
 
   const view = { site, active, muted, today, links, diffs, firstRun: findings.some((f) => f.firstRun), notify, edits };
+  // The marker is fitted first; the text gets the rest of the body, with fewer rows until it fits.
+  const kept = fitSiteState(st, MARKER_LIMIT);
+  const room = BODY_LIMIT - markerText('site', kept).length - 1;
   let text = render(view);
-  if (text.length > BODY_LIMIT) text = render({ ...view, withDiffs: false });
-  let body = writeMarker(text, 'site', st);
-  if (body.length > BODY_LIMIT) body = writeMarker(`${text.slice(0, BODY_LIMIT - 2000)}\n\n…cut to fit GitHub's limit; report.json and the job summary list everything.`, 'site', st);
+  if (text.length > room) text = render({ ...view, withDiffs: false });
+  for (let maxRows = 200; text.length > room && maxRows >= 3; maxRows = Math.floor(maxRows / 2)) text = render({ ...view, withDiffs: false, maxRows });
+  if (text.length > room) text = `${text.slice(0, text.lastIndexOf('\n', room - 200))}\n\n…cut to fit GitHub's limit; report.json and the job summary list everything.`;
+  const body = writeMarker(text, 'site', kept);
 
   let number = issue?.number;
   if (action === 'create') number = (await github.createIssue({ title, body, labels: [LABEL], assignees: notify.filter((n) => !n.includes('/')) })).number;
   else await github.updateIssue(number, { title, body, ...(action === 'open' && issue.state !== 'open' ? { state: 'open' } : {}), ...(action === 'close' ? { state: 'closed', state_reason: 'completed' } : {}) });
 
   if (action !== 'create' && fresh.length) {
-    const list = fresh.map((f) => `- ${BADGE[f.severity]} ${code(f.kind)} ${code(f.subject)} on ${where(f)}`);
+    const list = [...fresh.slice(0, 50).map((f) => `- ${BADGE[f.severity]} ${code(f.kind)} ${code(f.subject)} on ${where(f)}`), ...(fresh.length > 50 ? [`- …and ${fresh.length - 50} more, listed in this issue`] : [])];
     await github.createComment(number, [`New unapproved change${fresh.length === 1 ? '' : 's'} on ${md(site)}:`, ...list, ...(notify.length ? ['', `cc ${notify.map((n) => `@${n}`).join(' ')}`] : [])].join('\n'));
   }
   return { ...st, issue: number };

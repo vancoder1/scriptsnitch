@@ -6,6 +6,7 @@ import { coveringScripts, originOf } from './approval.js';
 import { buildFileAccepted } from './deploy.js';
 import { matchUrl, coversPage } from '../config/patterns.js';
 import { short } from '../util/hash.js';
+import { ownKey } from '../state.js';
 
 const hostOf = (url) => { try { return new URL(url).hostname; } catch { return ''; } };
 const patternOrigin = (pattern) => originOf(pattern.replace(/\{token\}|\{version\}|\*\*?/g, 'x'));
@@ -36,16 +37,16 @@ function judgeInline(ctx, page, profile, template, visits) {
 function judgeOwnFile(ctx, page, base, url, cls, obs, covering) {
   const { st } = ctx;
   const hash = obs.ref.contentHash;
-  const prev = st.ownHashes[url];
+  const prev = st.ownHashes[ownKey(url)];
   const deployEntry = covering.find((e) => e.trust === 'deploy');
-  if (covering.some((e) => e.sha256?.includes(hash))) { st.ownHashes[url] = short(hash); return; }
+  if (covering.some((e) => e.sha256?.includes(hash))) { st.ownHashes[ownKey(url)] = short(hash); return; }
   const immutable = cls.kind === 'hashed' || cls.kind === 'versioned';
   const data = { url, hash, page: page.path, sensitive: page.sensitive, slot: slotOf(url, cls), entryId: deployEntry.id };
   if (prev && prev !== short(hash)) {
     if (immutable) {
       ctx.add({ ...base, kind: 'in-place-change', subject: url, severity: 'high', reasons: [cls.kind === 'hashed' ? 'the content changed at a file name that carries a build token' : `the content of version ${cls.version} changed in place`], evidence: [hash], data });
     } else if (ctx.evident) {
-      st.ownHashes[url] = short(hash);
+      st.ownHashes[ownKey(url)] = short(hash);
       ctx.add({ ...base, kind: 'accepted', subject: url, severity: 'info', reasons: ['changed with a deploy'] });
     } else {
       ctx.add({ ...base, kind: 'own-change', subject: url, page: page.sensitive ? page.path : '*', severity: page.sensitive ? 'medium' : 'info', reasons: ['your own file changed with no deploy evident'], evidence: [hash], data });
@@ -59,14 +60,14 @@ function judgeOwnFile(ctx, page, base, url, cls, obs, covering) {
     // Loaded directly by the page and nothing to compare with yet (a first or stateless run).
     const known = entrySlot && (!ctx.entry.previous || slot in ctx.entry.previous);
     if (known || buildFileAccepted({ token: cls.token, referenced: obs.referenced, evident: ctx.evident, deployTokens: st.deployTokens })) {
-      st.ownHashes[url] = short(hash);
+      st.ownHashes[ownKey(url)] = short(hash);
       if (ctx.evident && !obs.referenced && !st.deployTokens.includes(cls.token)) st.deployTokens.push(cls.token);
       return;
     }
     ctx.add({ ...base, kind: 'build-file', subject: url, severity: page.sensitive ? 'high' : 'medium', reasons: [entrySlot ? 'a new file loaded directly by the page, in the build folder, with no deploy' : 'a new file in the build folder that the build does not name, with no deploy'], evidence: [hash], data });
     return;
   }
-  st.ownHashes[url] = short(hash);
+  st.ownHashes[ownKey(url)] = short(hash);
 }
 
 function judgeExternal(ctx, page, profile, url, observations, visits) {

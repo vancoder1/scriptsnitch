@@ -58,3 +58,15 @@ test('keeps the status marker under 60000 characters by dropping sightings first
   assert.deepEqual(f2.log.at(-1), logHeavy.log.at(-1), 'the newest log lines are kept');
   assert.equal(JSON.stringify(fitStatusState(emptyStatusState())), JSON.stringify(emptyStatusState()));
 });
+
+test('a site with thousands of own files still fits: their hashes go last, after sightings and log lines', () => {
+  const big = emptyStatusState();
+  big.log.push(['2026-11-24', 4, 0, 0, null]);
+  big.sites['https://shop.example'] = { entrySlots: { 'https://shop.example/assets/index-{token}.js': 'B7kQ0aRz' }, marker: 'v1', ownHashes: {}, inline: {}, deployTokens: [], seen: {}, domains: {}, domainCheck: null, domainFindings: [] };
+  for (let i = 0; i < 5000; i++) big.sites['https://shop.example'].ownHashes[`https://shop.example/static/version1700000000/frontend/Magento/luma/en_US/Magento_Ui/js/module-${i}.js`] = 'abcdef123456';
+  const fitted = fitStatusState(big, 60000);
+  assert.ok(JSON.stringify(fitted).length <= 60000);
+  assert.deepEqual(fitted.sites['https://shop.example'].entrySlots, big.sites['https://shop.example'].entrySlots);
+  assert.equal(fitted.log.length, 1);
+  assert.ok(Object.keys(fitted.sites['https://shop.example'].ownHashes).length > 0, 'only as many as needed go');
+});

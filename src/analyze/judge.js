@@ -3,11 +3,11 @@
 import { siteSection, seenKeyOf, emptyApproved } from '../config/approved.js';
 import { coversPage } from '../config/patterns.js';
 import { ownOrigins } from './hosts.js';
-import { siteState, emptyStatusState } from '../state.js';
+import { siteState, emptyStatusState, ownKey } from '../state.js';
 import { entrySlotsOf, deployEvident } from './deploy.js';
 import { judgeScripts } from './judge-scripts.js';
 import { judgeBehaviour } from './judge-behaviour.js';
-import { createCollector, scriptIdentity } from './keys.js';
+import { createCollector, scriptIdentity, bound } from './keys.js';
 import { DRILL_ORIGIN } from '../capture/drill.js';
 import { TRACKED_HEADERS } from './headers.js';
 import { isoDate } from '../util/time.js';
@@ -23,6 +23,10 @@ const WINDOW = 7;
 // finding no longer raised but still observed was approved (or accepted) and is resolved; one no
 // longer observed has vanished, and a vanished High stays listed (attackers remove skimmers).
 export function observedAs(f) {
+  return observedAsRaw(f).map((x) => bound(x, 320));
+}
+
+function observedAsRaw(f) {
   const d = f.data ?? {};
   switch (f.kind) {
     case 'new-origin': case 'new-slot': case 'new-own-script': case 'new-version': case 'build-file': case 'in-place-change': case 'own-change':
@@ -129,7 +133,8 @@ function judgeSite(args) {
 function prune(st, pages) {
   const seen = pages.flatMap((p) => Object.values(p.profiles).filter((r) => r?.conclusive).flatMap((r) => r.visits).filter((v) => v.conclusive && v.role !== 'drill').map((v) => ({ v, path: p.path })));
   const urls = new Set(seen.flatMap(({ v }) => v.scripts.map((s) => s.ref.url).filter(Boolean)));
-  for (const url of Object.keys(st.ownHashes)) if (!urls.has(url)) delete st.ownHashes[url];
+  const loaded = new Set([...urls].map(ownKey));
+  for (const k of Object.keys(st.ownHashes)) if (!loaded.has(k)) delete st.ownHashes[k];
   const templates = new Map();
   for (const { v, path } of seen) for (const s of v.scripts) if (s.kind === 'inline') (templates.get(path) ?? templates.set(path, new Set()).get(path)).add(short(s.ref.template));
   for (const path of Object.keys(st.inline)) {

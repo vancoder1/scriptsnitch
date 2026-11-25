@@ -54,6 +54,8 @@ export function createFakeGitHub(initial = {}) {
   };
   const calls = [];
   const failures = new Map();
+  // GitHub refuses an issue, pull request or comment body over 65536 characters.
+  const tooLong = (what, body) => { if (body && body.length > 65536) throw new HttpError('POST', what, 422, '{"message":"body is too long (maximum is 65536 characters)"}'); };
   const notFound = (what) => new HttpError('GET', what, 404, '{"message":"Not Found"}');
 
   const api = {
@@ -67,12 +69,14 @@ export function createFakeGitHub(initial = {}) {
       return structuredClone(i);
     },
     async createIssue({ title, body, labels = [], assignees = [] }) {
+      tooLong('issues', body);
       // The real client retries once without assignees on a 422; the fake just keeps the valid ones.
       const issue = { number: ++number, title, body, state: 'open', labels: labels.map((name) => ({ name })), assignees: assignees.filter((a) => WRITE.has(state.permissions[a])).map((login) => ({ login })), user: bot, created_at: tick(), html_url: `https://github.com/${owner}/repo/issues/${number}` };
       state.issues.push(issue);
       return structuredClone(issue);
     },
     async updateIssue(n, patch) {
+      tooLong('issues', patch.body);
       const i = state.issues.find((x) => x.number === n);
       if (!i) throw notFound(`issue ${n}`);
       for (const [k, v] of Object.entries(patch)) {
@@ -83,6 +87,7 @@ export function createFakeGitHub(initial = {}) {
       return structuredClone(i);
     },
     async createComment(n, body, user = bot) {
+      tooLong('comments', body);
       const c = { id: ++commentId, body, user: typeof user === 'string' ? { login: user } : user, created_at: tick() };
       (state.comments[n] ??= []).push(c);
       return structuredClone(c);
@@ -121,6 +126,7 @@ export function createFakeGitHub(initial = {}) {
       return state.pulls.filter((p) => (wanted === 'all' || p.state === wanted) && (!branch || p.head.ref === branch)).map((p) => structuredClone(p));
     },
     async createPull({ title, head, base, body }) {
+      tooLong('pulls', body);
       if (!state.refs[`heads/${head}`]) throw new HttpError('POST', 'pulls', 422, '{"message":"head does not exist"}');
       const repo = { full_name: `${owner}/repo` };
       const pr = { number: ++number, title, body, state: 'open', merged: false, head: { ref: head, repo }, base: { ref: base, repo }, user: bot, created_at: tick(), html_url: `https://github.com/${owner}/repo/pull/${number}` };
@@ -128,6 +134,7 @@ export function createFakeGitHub(initial = {}) {
       return structuredClone(pr);
     },
     async updatePull(n, patch) {
+      tooLong('pulls', patch.body);
       const p = state.pulls.find((x) => x.number === n);
       if (!p) throw notFound(`pull ${n}`);
       Object.assign(p, patch);

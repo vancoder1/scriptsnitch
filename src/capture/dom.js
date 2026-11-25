@@ -131,7 +131,7 @@ export async function readDom(ctx, { own, framesMode = 'own', extraSelectors = {
         continue;
       }
       const a = attrs(node);
-      const field = { nodeId: node.nodeId, sessionId: session.id, frame: session === page ? frameLabel : sessionOrigin, form: formSignature(node.nodeId, tree.parents, docUrl), field: a.name || a.id || (a.autocomplete ?? '').split(/\s+/)[0] || a.type || 'input', kind, formNodeId: formNodeOf(node.nodeId, tree.parents)?.nodeId ?? null, attrs: a };
+      const field = { nodeId: node.nodeId, sessionId: session.id, frame: session === page ? frameLabel : sessionOrigin, form: formSignature(node.nodeId, tree.parents, docUrl), field: (a.name || a.id || (a.autocomplete ?? '').split(/\s+/)[0] || a.type || 'input').slice(0, 100), kind, formNodeId: formNodeOf(node.nodeId, tree.parents)?.nodeId ?? null, attrs: a };
       fieldNodes.push(field);
       if (!SENSITIVE_KINDS.has(kind)) continue;
       sensitiveHere.push(field);

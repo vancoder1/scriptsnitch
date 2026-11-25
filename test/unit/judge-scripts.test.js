@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { judge } from '../../src/analyze/judge.js';
 import { findingKey } from '../../src/analyze/keys.js';
 import { SITE, H, ext, inline, visit, snapshot, entry, approved, config, state } from '../helpers/snapshots.js';
+import { ownKey } from '../../src/state.js';
 
 const run = (snap, appr, st = state()) => judge({ snapshot: snap, approved: appr, config: config(snap.pages.map((p) => ({ path: p.path, sensitive: p.sensitive }))), state: st, now: Date.UTC(2026, 10, 24) });
 const kinds = (r) => r.findings.map((f) => `${f.kind}:${f.severity}`).sort();
@@ -61,14 +62,14 @@ test('content-mismatch is High at an approved exact URL, including two unapprove
 test('in-place-change is High at an unchanged hashed name and at an own path-versioned URL', () => {
   const own = approved({ scripts: [entry({ id: 'build', match: `${SITE}/assets/*.{token}.js`, trust: 'deploy' }), entry({ id: 'mz', match: `${SITE}/js/modernizr-{version}.min.js`, trust: 'deploy' })] });
   const st = state();
-  st.sites[SITE] = { entrySlots: {}, marker: null, ownHashes: { [`${SITE}/assets/main.3f2a1c9b.js`]: H('old').slice(0, 12), [`${SITE}/js/modernizr-2.6.2.min.js`]: H('mz-old').slice(0, 12) }, inline: {}, deployTokens: [], seen: {}, domains: {}, domainCheck: null };
+  st.sites[SITE] = { entrySlots: {}, marker: null, ownHashes: { [ownKey(`${SITE}/assets/main.3f2a1c9b.js`)]: H('old').slice(0, 12), [ownKey(`${SITE}/js/modernizr-2.6.2.min.js`)]: H('mz-old').slice(0, 12) }, inline: {}, deployTokens: [], seen: {}, domains: {}, domainCheck: null };
   const r = run(one('/', { scripts: [ext(`${SITE}/assets/main.3f2a1c9b.js`, { hash: H('new') }), ext(`${SITE}/js/modernizr-2.6.2.min.js`, { hash: H('mz-skimmer') })] }), own, st);
   assert.deepEqual(kinds(r), ['in-place-change:high', 'in-place-change:high']);
 });
 
 test('own-change is Medium on sensitive pages and Info elsewhere without deploy evidence, and accepted with it', () => {
   const appr = approved({ scripts: [entry({ id: 'app', match: `${SITE}/js/app.js`, trust: 'deploy', pages: ['**', '/login'] })] });
-  const prior = () => { const st = state(); st.sites[SITE] = { entrySlots: { [`${SITE}/assets/index-{token}.js`]: 'B7kQ0aRz' }, marker: null, ownHashes: { [`${SITE}/js/app.js`]: H('before').slice(0, 12) }, inline: {}, deployTokens: [], seen: {}, domains: {}, domainCheck: null }; return st; };
+  const prior = () => { const st = state(); st.sites[SITE] = { entrySlots: { [`${SITE}/assets/index-{token}.js`]: 'B7kQ0aRz' }, marker: null, ownHashes: { [ownKey(`${SITE}/js/app.js`)]: H('before').slice(0, 12) }, inline: {}, deployTokens: [], seen: {}, domains: {}, domainCheck: null }; return st; };
   const changed = (path, sensitive, extra = []) => run(snapshot([{ path, sensitive, observed: { scripts: [ext(`${SITE}/js/app.js`, { hash: H('after') }), ...extra] } }]), appr, prior());
   assert.deepEqual(kinds(changed('/login', true)), ['own-change:medium']);
   const home = changed('/', false);
@@ -136,7 +137,7 @@ test('an in-place change keeps being reported until its hash is approved on the 
   const url = `${SITE}/assets/main.3f2a1c9b.js`;
   const appr = (sha256) => approved({ scripts: [entry({ id: 'build', match: `${SITE}/assets/*.{token}.js`, trust: 'deploy', ...(sha256 ? { sha256 } : {}) })] });
   const st = state();
-  st.sites[SITE] = { entrySlots: {}, marker: null, ownHashes: { [url]: H('old').slice(0, 12) }, inline: {}, deployTokens: [], seen: {}, domains: {}, domainCheck: null };
+  st.sites[SITE] = { entrySlots: {}, marker: null, ownHashes: { [ownKey(url)]: H('old').slice(0, 12) }, inline: {}, deployTokens: [], seen: {}, domains: {}, domainCheck: null };
   const snap = one('/', { scripts: [ext(url, { hash: H('new') })] });
   const first = run(snap, appr(), st);
   assert.deepEqual(kinds(first), ['in-place-change:high']);
@@ -175,7 +176,7 @@ test('a new inline script on a page that is not sensitive says only that', () =>
 test('an in-place change says whether a build token or a version was reused', () => {
   const own = approved({ scripts: [entry({ id: 'build', match: `${SITE}/assets/*.{token}.js`, trust: 'deploy' }), entry({ id: 'mz', match: `${SITE}/js/modernizr-{version}.min.js`, trust: 'deploy' })] });
   const st = state();
-  st.sites[SITE] = { entrySlots: {}, marker: null, ownHashes: { [`${SITE}/assets/main.3f2a1c9b.js`]: H('old').slice(0, 12), [`${SITE}/js/modernizr-2.6.2.min.js`]: H('mz-old').slice(0, 12) }, inline: {}, deployTokens: [], seen: {}, domains: {}, domainCheck: null };
+  st.sites[SITE] = { entrySlots: {}, marker: null, ownHashes: { [ownKey(`${SITE}/assets/main.3f2a1c9b.js`)]: H('old').slice(0, 12), [ownKey(`${SITE}/js/modernizr-2.6.2.min.js`)]: H('mz-old').slice(0, 12) }, inline: {}, deployTokens: [], seen: {}, domains: {}, domainCheck: null };
   const r = run(one('/', { scripts: [ext(`${SITE}/assets/main.3f2a1c9b.js`, { hash: H('new') }), ext(`${SITE}/js/modernizr-2.6.2.min.js`, { hash: H('mz-skimmer') })] }), own, st);
   assert.deepEqual(r.findings.map((f) => f.reasons[0]).sort(), ['the content changed at a file name that carries a build token', 'the content of version 2.6.2 changed in place']);
 });

@@ -107,8 +107,15 @@ export async function readDom(ctx, { own, framesMode = 'own', extraSelectors = {
     if (!doc) continue;
     const tree = walkTree(doc);
     const extra = await extraSelectorNodes(ctx, session.id, doc.nodeId, extraSelectors);
-    const sessionOrigin = session === page ? 'top' : originOf(session.url);
-    const sessionTracked = session === page || tracked(sessionOrigin);
+    // A frame in a process of its own with no origin of its own (a sandboxed srcdoc frame) is labelled
+    // as the frame that made it: the top document's, when the page drew it.
+    const labelOf = (s) => {
+      if (s === page) return 'top';
+      const parent = ctx.sessions.get(s.parent);
+      return originOf(s.url) ?? (parent && parent !== s ? labelOf(parent) : 'top');
+    };
+    const sessionOrigin = labelOf(session);
+    const sessionTracked = sessionOrigin === 'top' || tracked(sessionOrigin);
     const sensitiveHere = [];
 
     for (const { node, docUrl } of tree.entries) {

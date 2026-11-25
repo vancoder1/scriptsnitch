@@ -35,6 +35,7 @@ test("finds sensitive fields in srcdoc and about:blank frames, as the page's own
   const v = await visit('/checkout');
   assert.ok(v.fields.some((f) => f.kind === 'card' && f.field === 'ccnum' && f.frame === 'top'), JSON.stringify(v.fields));
   assert.ok(v.fields.some((f) => f.kind === 'password' && f.field === 'pin' && f.frame === 'top'), JSON.stringify(v.fields));
+  assert.ok(v.fields.some((f) => f.kind === 'card' && f.field === 'boxnum' && f.frame === 'top'), `a sandboxed srcdoc frame: ${JSON.stringify(v.fields)}`);
 });
 
 test('counts a second card field with the same signature', async (t) => {

@@ -74,6 +74,15 @@ function query(searchParams, versionParam) {
   return pairs.length ? `?${pairs.map(([k, v]) => (v === '{version}' ? `${encodeURIComponent(k)}={version}` : `${encodeURIComponent(k)}=${encodeURIComponent(v)}`)).join('&')}` : '';
 }
 
+// What identifies an own file's content: its origin and path, plus the version when it sits in the
+// query (app.js?v=123). Other parameters are left out, as approval patterns leave them out: the same
+// file loaded with an extra `?x=1` is the same file.
+export function fileIdentity(url, classification = classifyUrl(url)) {
+  const u = URL.parse(url);
+  if (!u) return url;
+  return `${u.origin}${u.pathname}${classification.queryVersion ? `?{version}=${classification.queryVersion}` : ''}`;
+}
+
 // The URL with the build token or version replaced by a placeholder, and query parameters sorted.
 export function slotOf(url, classification = classifyUrl(url)) {
   if (classification.kind === 'code') return url.split(':')[0] + ':';

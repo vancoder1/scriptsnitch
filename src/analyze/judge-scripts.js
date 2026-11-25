@@ -1,6 +1,6 @@
 // Script identity and content findings (design §10): new-origin, new-slot, scope, new-version,
 // content-mismatch, in-place-change, own-change, new-own-script, build-file, new-inline, cloaking.
-import { classifyUrl, slotOf } from './urls.js';
+import { classifyUrl, slotOf, fileIdentity } from './urls.js';
 import { accountKey, accountKeyParams, sharedHostKind, vendorOf } from './hosts.js';
 import { coveringScripts, originOf } from './approval.js';
 import { buildFileAccepted } from './deploy.js';
@@ -37,8 +37,8 @@ function judgeInline(ctx, page, profile, template, visits) {
 // an earlier run, or the entry file of a slot the page loaded before (design §8, "an accepted own
 // script"). Two files dropped in the build folder that name each other vouch for nothing.
 function trustedReferencer(ctx, url) {
-  if (ctx.ownBaseline.has(ownKey(url))) return true;
   const cls = classifyUrl(url);
+  if (ctx.ownBaseline.has(ownKey(fileIdentity(url, cls)))) return true;
   const token = cls.token ?? cls.version ?? cls.queryVersion;
   const slot = slotOf(url, cls);
   return token !== undefined && ctx.entry.current[slot] === token && (!ctx.entry.previous || slot in ctx.entry.previous);
@@ -46,20 +46,30 @@ function trustedReferencer(ctx, url) {
 
 // A reported change is not adopted into the state: it is reported on every run until its hash is
 // approved on the entry (sha256), or, for an unversioned file, until a deploy is evident.
+// The hashes an own file has had, kept under its identity (fileIdentity): a few, for a file whose
+// variants differ by a query parameter (config.js?lang=en and ?lang=fr).
+const knownHashes = (st, k) => [st.ownHashes[k] ?? []].flat();
+function remember(st, k, hash) {
+  const list = [...new Set([...knownHashes(st, k), short(hash)])].slice(-8);
+  st.ownHashes[k] = list.length === 1 ? list[0] : list;
+}
+
 function judgeOwnFile(ctx, page, base, url, cls, obs, covering) {
   const { st } = ctx;
   const hash = obs.ref.contentHash;
-  const prev = st.ownHashes[ownKey(url)];
+  const k = ownKey(fileIdentity(url, cls));
+  // Known from an earlier run: what this run sees for the first time (every variant) is the baseline.
+  const prev = ctx.ownBaseline.has(k);
   const deployEntry = covering.find((e) => e.trust === 'deploy');
-  if (covering.some((e) => e.sha256?.includes(hash))) { st.ownHashes[ownKey(url)] = short(hash); return; }
+  if (covering.some((e) => e.sha256?.includes(hash))) { remember(st, k, hash); return; }
   const immutable = cls.kind === 'hashed' || cls.kind === 'versioned';
   const data = { url, hash, page: page.path, sensitive: page.sensitive, slot: slotOf(url, cls), entryId: deployEntry.id };
-  if (prev && prev !== short(hash)) {
+  if (prev && !knownHashes(st, k).includes(short(hash))) {
     if (immutable) {
       ctx.add({ ...base, kind: 'in-place-change', subject: url, severity: 'high', reasons: [cls.kind === 'hashed' ? 'the content changed at a file name that carries a build token' : `the content of version ${cls.version} changed in place`], evidence: [hash], data });
     } else if (ctx.evident) {
       ctx.acceptByDeploy(`content:${url}|${hash}`);
-      st.ownHashes[ownKey(url)] = short(hash);
+      remember(st, k, hash);
       ctx.add({ ...base, kind: 'accepted', subject: url, severity: 'info', reasons: ['changed with a deploy'] });
     } else {
       ctx.add({ ...base, kind: 'own-change', subject: url, page: page.sensitive ? page.path : '*', severity: page.sensitive ? 'medium' : 'info', reasons: ['your own file changed with no deploy evident'], evidence: [hash], data });
@@ -75,14 +85,14 @@ function judgeOwnFile(ctx, page, base, url, cls, obs, covering) {
     const referenced = (obs.referencedBy ?? []).some((u) => trustedReferencer(ctx, u));
     if (known || buildFileAccepted({ token: cls.token, referenced, evident: ctx.evident, deployTokens: st.deployTokens })) {
       if (!entrySlot) ctx.acceptByDeploy(`content:${url}|${hash}`);
-      st.ownHashes[ownKey(url)] = short(hash);
+      remember(st, k, hash);
       if (ctx.evident && !referenced && !st.deployTokens.includes(cls.token)) st.deployTokens.push(cls.token);
       return;
     }
     ctx.add({ ...base, kind: 'build-file', subject: url, severity: page.sensitive ? 'high' : 'medium', reasons: [entrySlot ? 'a new file loaded directly by the page, in the build folder, with no deploy' : 'a new file in the build folder that the build does not name, with no deploy'], evidence: [hash], data });
     return;
   }
-  st.ownHashes[ownKey(url)] = short(hash);
+  remember(st, k, hash);
 }
 
 function judgeExternal(ctx, page, profile, url, observations, visits) {

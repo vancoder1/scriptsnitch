@@ -67,6 +67,22 @@ test('in-place-change is High at an unchanged hashed name and at an own path-ver
   assert.deepEqual(kinds(r), ['in-place-change:high', 'in-place-change:high']);
 });
 
+test('an own file loaded with an extra query parameter is still the same file', () => {
+  const own = approved({ scripts: [entry({ id: 'mz', match: `${SITE}/js/modernizr-{version}.min.js`, trust: 'deploy', pages: ['**', '/checkout'] }), entry({ id: 'app', match: `${SITE}/js/app.js`, trust: 'deploy', pages: ['**', '/checkout'] })] });
+  const st = state();
+  st.sites[SITE] = { entrySlots: {}, marker: null, ownHashes: { [ownKey(`${SITE}/js/modernizr-2.6.2.min.js`)]: H('mz-old').slice(0, 12), [ownKey(`${SITE}/js/app.js`)]: H('app-old').slice(0, 12) }, inline: {}, deployTokens: [], seen: {}, domains: {}, domainCheck: null };
+  const r = run(one('/checkout', { scripts: [ext(`${SITE}/js/modernizr-2.6.2.min.js?x=1`, { hash: H('mz-skimmer') }), ext(`${SITE}/js/app.js?x=1`, { hash: H('app-skimmer') })] }, { sensitive: true }), own, st);
+  assert.deepEqual(kinds(r), ['in-place-change:high', 'own-change:medium']);
+});
+
+test('an own file whose variants differ by query parameter keeps every variant it has seen', () => {
+  const own = approved({ scripts: [entry({ id: 'cfg', match: `${SITE}/js/config.js`, trust: 'deploy', pages: ['**', '/checkout'] })] });
+  const page = () => one('/checkout', { scripts: [ext(`${SITE}/js/config.js?lang=en`, { hash: H('en') }), ext(`${SITE}/js/config.js?lang=fr`, { hash: H('fr') })] }, { sensitive: true });
+  const first = run(page(), own);
+  assert.deepEqual(kinds(first), []);
+  assert.deepEqual(kinds(run(page(), own, first.state)), []);
+});
+
 test('own-change is Medium on sensitive pages and Info elsewhere without deploy evidence, and accepted with it', () => {
   const appr = approved({ scripts: [entry({ id: 'app', match: `${SITE}/js/app.js`, trust: 'deploy', pages: ['**', '/login'] })] });
   const prior = () => { const st = state(); st.sites[SITE] = { entrySlots: { [`${SITE}/assets/index-{token}.js`]: 'B7kQ0aRz' }, marker: null, ownHashes: { [ownKey(`${SITE}/js/app.js`)]: H('before').slice(0, 12) }, inline: {}, deployTokens: [], seen: {}, domains: {}, domainCheck: null }; return st; };

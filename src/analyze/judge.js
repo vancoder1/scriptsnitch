@@ -5,6 +5,7 @@ import { coversPage } from '../config/patterns.js';
 import { ownOrigins } from './hosts.js';
 import { siteState, emptyStatusState, ownKey } from '../state.js';
 import { entrySlotsOf, deployEvident } from './deploy.js';
+import { fileIdentity } from './urls.js';
 import { judgeScripts } from './judge-scripts.js';
 import { judgeBehaviour } from './judge-behaviour.js';
 import { createCollector, scriptIdentity, bound } from './keys.js';
@@ -137,7 +138,7 @@ function judgeSite(args) {
 function prune(st, pages) {
   const seen = pages.flatMap((p) => Object.values(p.profiles).filter((r) => r?.conclusive).flatMap((r) => r.visits).filter((v) => v.conclusive && v.role !== 'drill').map((v) => ({ v, path: p.path })));
   const urls = new Set(seen.flatMap(({ v }) => v.scripts.map((s) => s.ref.url).filter(Boolean)));
-  const loaded = new Set([...urls].map(ownKey));
+  const loaded = new Set([...urls].map((url) => ownKey(fileIdentity(url))));
   for (const k of Object.keys(st.ownHashes)) if (!loaded.has(k)) delete st.ownHashes[k];
   const templates = new Map();
   for (const { v, path } of seen) for (const s of v.scripts) if (s.kind === 'inline') (templates.get(path) ?? templates.set(path, new Set()).get(path)).add(short(s.ref.template));

@@ -50,18 +50,31 @@ function createContext(conn, browserContextId, forget) {
   const waiters = new Map();
   const unsubscribe = [];
 
+  // What frames and sessions there were, for labelling what they did once they have gone.
+  const gone = new Map();
+  const frameUrls = new Map();
   unsubscribe.push(conn.on('Page.frameNavigated', ({ frame }, sessionId) => {
+    if (sessions.has(sessionId)) frameUrls.set(frame.id, frame.url);
     const s = sessions.get(sessionId);
     // A page's root frame has no parent; an out-of-process iframe's root frame has the target's id.
     if (s && (!frame.parentId || frame.id === s.targetId)) s.url = frame.url;
   }));
   // A frame that was removed or navigated to another process leaves: commands to its session fail.
-  unsubscribe.push(conn.on('Target.detachedFromTarget', ({ sessionId }) => { sessions.delete(sessionId); }));
+  // Commands go to live sessions only; what a gone one recorded is still labelled as its frame's.
+  unsubscribe.push(conn.on('Target.detachedFromTarget', ({ sessionId }) => {
+    const s = sessions.get(sessionId);
+    if (s) gone.set(sessionId, s);
+    sessions.delete(sessionId);
+  }));
 
   const ctx = {
     id: browserContextId,
     conn,
     sessions,
+    gone,
+    frameUrls,
+    // A session, live or gone.
+    sessionOf: (sessionId) => sessions.get(sessionId) ?? gone.get(sessionId),
     pageSession: null,
     // Called for every kept session before its code is allowed to run.
     onSession(fn) {

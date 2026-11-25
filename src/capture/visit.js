@@ -82,14 +82,15 @@ async function observe(ctx, session, page, logs, { own, framesMode, extraSelecto
     docUrls.get(sessionId).add(url);
   }
   const frameLabel = (frameId, sessionId) => {
-    const s = ctx.sessions.get(sessionId);
+    const s = ctx.sessionOf(sessionId);
     if (s?.type === 'iframe') return originOf(s.url) ?? 'top';
     if (s && s.type !== 'page') {
-      const parent = ctx.sessions.get(s.parent);
+      const parent = ctx.sessionOf(s.parent);
       return parent?.type === 'iframe' ? originOf(parent.url) ?? 'top' : 'top';
     }
     if (!frameId || frameId === mainFrameId) return 'top';
-    return originOf(frames.get(frameId)?.url) ?? 'top';
+    // A frame removed before the visit looked keeps the address it had.
+    return originOf(frames.get(frameId)?.url ?? ctx.frameUrls.get(frameId)) ?? 'top';
   };
   const tracked = (frame) => frame === 'top' || own.has(frame) || framesMode === 'all';
   const built = await buildScripts(ctx, logs.scripts, logs.net, { frameOf: (p) => frameLabel(p.frameId, p.sessionId), docUrls, isTracked: (_p, frame) => tracked(frame), cache });

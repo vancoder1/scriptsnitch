@@ -74,3 +74,11 @@ test('reads dns-prefetch and preconnect hosts', async (t) => {
   const v = await visit('/login');
   assert.deepEqual(v.linkHosts, ['pre.evil.test', 'prefetch.evil.test']);
 });
+
+test('a third-party frame removed during the visit keeps its requests to itself', async (t) => {
+  if (!browser) return t.skip('no Chrome');
+  await site.setScenario('frame-gone');
+  const v = await visit('/login');
+  assert.ok(site.received.some((r) => r.url?.includes('/collect?from=frame') || r.path?.includes('/collect')), 'the frame did send its request');
+  assert.ok(!v.destinations.some((d) => d.url.includes('/collect?from=frame')), JSON.stringify(v.destinations.map((d) => [d.url, d.frame])));
+});

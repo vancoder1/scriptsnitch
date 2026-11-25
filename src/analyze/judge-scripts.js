@@ -84,11 +84,12 @@ function judgeOwnFile(ctx, page, base, url, cls, obs, covering) {
     const known = entrySlot && (!ctx.entry.previous || slot in ctx.entry.previous);
     const referenced = (obs.referencedBy ?? []).some((u) => trustedReferencer(ctx, u));
     if (known || buildFileAccepted({ token: cls.token, referenced, evident: ctx.evident, deployTokens: st.deployTokens })) {
-      if (!entrySlot) ctx.acceptByDeploy(`content:${url}|${hash}`);
+      if (!known) ctx.acceptByDeploy(`content:${url}|${hash}`);
       remember(st, k, hash);
       if (ctx.evident && !referenced && !st.deployTokens.includes(cls.token)) st.deployTokens.push(cls.token);
       return;
     }
+    if (entrySlot) ctx.reportedSlots.add(slot);
     ctx.add({ ...base, kind: 'build-file', subject: url, severity: page.sensitive ? 'high' : 'medium', reasons: [entrySlot ? 'a new file loaded directly by the page, in the build folder, with no deploy' : 'a new file in the build folder that the build does not name, with no deploy'], evidence: [hash], data });
     return;
   }

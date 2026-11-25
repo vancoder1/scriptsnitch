@@ -112,6 +112,8 @@ function siteContext({ site, approved, status, snapshot, now, pages, includeVisi
     entry: { previous: st.entrySlots, current },
     // Own files known before this run: only these, and entry files of known slots, vouch for others.
     ownBaseline: new Set(Object.keys(st.ownHashes)),
+    // Entry slots of files reported this run: not remembered, or the next run would take them for known.
+    reportedSlots: new Set(),
     marker: currentMarker,
     firstRun: !approved.sites[site],
     inherit: (path, url, entries) => inherited.set(`${path} ${url}`, entries),
@@ -219,7 +221,8 @@ export function judge({ snapshot, approved, state, now = Date.now() }) {
     // still recognised as a deploy; when all were conclusive, only this run's slots are kept.
     const allConclusive = pages.every((p) => Object.values(p.profiles).every((r) => !r || r.conclusive));
     if (allConclusive) prune(ctx.st, pages);
-    ctx.st.entrySlots = allConclusive ? ctx.entry.current : { ...(ctx.st.entrySlots ?? {}), ...ctx.entry.current };
+    const accepted = Object.fromEntries(Object.entries(ctx.entry.current).filter(([slot]) => !ctx.reportedSlots.has(slot)));
+    ctx.st.entrySlots = allConclusive ? accepted : { ...(ctx.st.entrySlots ?? {}), ...accepted };
     ctx.st.marker = ctx.marker ?? ctx.st.marker;
     // Drill visits are judged on a throwaway copy of the state, so they change nothing that lasts.
     const scratch = structuredClone({ ...status, sites: { ...status.sites, [site]: state.sites?.[site] } });

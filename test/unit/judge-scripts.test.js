@@ -121,6 +121,17 @@ test('build-file follows the chunk map and deploy evidence', () => {
   assert.deepEqual(kinds(run(one('/', { scripts: [ext(`${SITE}/assets/index-C9xR1bTp.js`), ext(`${SITE}/assets/evil-Zz9Yy8Xx.js`, { creator: `${SITE}/assets/index-C9xR1bTp.js` })] }), appr, st())), []);
 });
 
+test('a file dropped in the build folder with its own script tag is reported on every run, not adopted', () => {
+  const appr = approved({ scripts: [entry({ id: 'build', match: `${SITE}/assets/*-{token}.js`, trust: 'deploy', pages: ['**', '/checkout'] })] });
+  const st = state();
+  st.sites[SITE] = { entrySlots: { [`${SITE}/assets/index-{token}.js`]: 'B7kQ0aRz' }, marker: null, ownHashes: {}, inline: {}, deployTokens: [], seen: {}, domains: {}, domainCheck: null };
+  const page = () => one('/checkout', { scripts: [ext(`${SITE}/assets/index-B7kQ0aRz.js`), ext(`${SITE}/assets/skim-Ab12Cd34.js`)] }, { sensitive: true });
+  const first = run(page(), appr, st);
+  assert.deepEqual(kinds(first), ['build-file:high']);
+  const second = run(page(), appr, first.state);
+  assert.deepEqual(kinds(second), ['build-file:high'], 'the second run does not take its slot for a known one');
+});
+
 test('two files dropped in the build folder do not vouch for each other', () => {
   const appr = approved({ scripts: [entry({ id: 'build', match: `${SITE}/assets/*-{token}.js`, trust: 'deploy' })] });
   const st = () => { const s = state(); s.sites[SITE] = { entrySlots: { [`${SITE}/assets/index-{token}.js`]: 'B7kQ0aRz' }, marker: null, ownHashes: {}, inline: {}, deployTokens: [], seen: {}, domains: {}, domainCheck: null }; return s; };

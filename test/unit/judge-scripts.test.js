@@ -210,6 +210,17 @@ test('an approved origin loader lends no trust to a script it injects from anoth
   assert.deepEqual(kinds(g), ['new-origin:high']);
 });
 
+test('no trust is inherited onto a host that serves anyone\'s files, even one the loader\'s company runs', () => {
+  const gtm = 'https://www.googletagmanager.com/gtm.js?id=GTM-MINE';
+  const injected = (loader, url) => kinds(run(one('/checkout', { scripts: [ext(loader), ext(url, { creator: loader })] }, { sensitive: true }), approved({ scripts: [entry({ id: 'loader', match: loader, trust: 'origin', pages: ['**', '/checkout'] })] })));
+  assert.deepEqual(injected(gtm, 'https://storage.googleapis.com/evil-bucket/skim.js'), ['new-origin:high']);
+  assert.deepEqual(injected(gtm, 'https://lh3.googleusercontent.com/skim.js'), ['new-origin:high']);
+  assert.deepEqual(injected(gtm, 'https://firebasestorage.googleapis.com/v0/b/evil/o/skim.js'), ['new-origin:high']);
+  assert.deepEqual(injected(gtm, 'https://evil-abc123-uc.a.run.app/skim.js'), ['new-origin:high']);
+  assert.deepEqual(injected('https://d111abcdef8.cloudfront.net/loader.js', 'https://d222evil.cloudfront.net/skim.js'), ['new-origin:high']);
+  assert.deepEqual(injected(gtm, 'https://www.google-analytics.com/analytics.js'), [], 'the vendor\'s own hosts still inherit');
+});
+
 test('trust is inherited only from a loader approved with origin trust', () => {
   const loader = 'https://www.google.com/recaptcha/api.js';
   const release = 'https://www.gstatic.com/recaptcha/releases/abc123/recaptcha__en.js';

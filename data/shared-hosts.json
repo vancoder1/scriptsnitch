@@ -4,13 +4,16 @@
     "unpkg.com", "cdnjs.cloudflare.com", "esm.sh", "cdn.skypack.dev", "ga.jspm.io", "deno.land",
     "raw.githubusercontent.com", "gist.githubusercontent.com", "raw.githack.com", "rawcdn.githack.com",
     "cdn.statically.io", "cdn.rawgit.com", "cdn.shopify.com",
-    "storage.googleapis.com", "s3.amazonaws.com", "s3.*.amazonaws.com"
+    "storage.googleapis.com", "firebasestorage.googleapis.com", "*.googleusercontent.com",
+    "s3.amazonaws.com", "s3.*.amazonaws.com"
   ],
   "host": [
     "*.github.io", "*.netlify.app", "*.vercel.app", "*.pages.dev", "*.workers.dev", "*.web.app",
-    "*.firebaseapp.com", "*.firebaseio.com", "*.appspot.com", "*.herokuapp.com", "*.cloudfront.net",
+    "*.firebaseapp.com", "*.firebaseio.com", "*.appspot.com", "*.run.app", "*.cloudfunctions.net",
+    "*.herokuapp.com", "*.cloudfront.net", "*.amplifyapp.com", "*.elasticbeanstalk.com",
+    "*.execute-api.*.amazonaws.com", "*.lambda-url.*.on.aws",
     "*.s3.amazonaws.com", "*.s3.*.amazonaws.com", "*.blob.core.windows.net", "*.azureedge.net",
-    "*.azurewebsites.net", "*.onrender.com", "*.fly.dev", "*.glitch.me", "*.surge.sh", "*.repl.co",
-    "*.000webhostapp.com"
+    "*.azurewebsites.net", "*.azurestaticapps.net", "*.onrender.com", "*.fly.dev", "*.glitch.me",
+    "*.surge.sh", "*.repl.co", "*.000webhostapp.com"
   ]
 }

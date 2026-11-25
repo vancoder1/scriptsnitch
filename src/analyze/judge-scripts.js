@@ -109,7 +109,9 @@ function judgeExternal(ctx, page, profile, url, observations, visits) {
     return;
   }
 
-  if (obs.creator?.url) {
+  // Nothing inherits onto a host that serves anyone's files (cloud storage, tenant subdomains), even
+  // one the loader's company runs: a stolen tag-manager login loading from a bucket is the classic case.
+  if (obs.creator?.url && !sharedHostKind(hostOf(url))) {
     const loaders = coveringScripts({ url: obs.creator.url, template: null }, section, page.path, page.sensitive).filter((e) => e.trust === 'origin');
     const creatorVendor = vendorOf(hostOf(obs.creator.url));
     const sameVendor = originOf(obs.creator.url) === origin || (creatorVendor && creatorVendor === vendorOf(hostOf(url)));

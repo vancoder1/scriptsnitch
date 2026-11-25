@@ -93,6 +93,22 @@ function judgeOwnFile(ctx, page, base, url, cls, obs, covering) {
     ctx.add({ ...base, kind: 'build-file', subject: url, severity: page.sensitive ? 'high' : 'medium', reasons: [entrySlot ? 'a new file loaded directly by the page, in the build folder, with no deploy' : 'a new file in the build folder that the build does not name, with no deploy'], evidence: [hash], data });
     return;
   }
+  // A version folder (Magento's /static/version{version}/**): every file of a build shares the version,
+  // so it vouches for none of them. A new file there is accepted on a first run, with a deploy, or as
+  // a known entry file; otherwise it is a file dropped into the build.
+  if (cls.kind === 'versioned' && /\*/.test(deployEntry.match)) {
+    const slot = slotOf(url, cls);
+    const entrySlot = slot in ctx.entry.current;
+    const known = entrySlot && (!ctx.entry.previous || slot in ctx.entry.previous);
+    if (!ctx.entry.previous || known || ctx.evident) {
+      if (ctx.entry.previous && !known) ctx.acceptByDeploy(`content:${url}|${hash}`);
+      remember(st, k, hash);
+      return;
+    }
+    if (entrySlot) ctx.reportedSlots.add(slot);
+    ctx.add({ ...base, kind: 'build-file', subject: url, severity: page.sensitive ? 'high' : 'medium', reasons: ['a new file in the versioned build folder, with no deploy'], evidence: [hash], data });
+    return;
+  }
   remember(st, k, hash);
 }
 

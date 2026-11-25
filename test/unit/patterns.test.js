@@ -104,3 +104,9 @@ test('an approved URL with an escaped unreserved character matches itself and it
   assert.equal(matchUrl('https://x.example/~user/a.js', 'https://x.example/%7Euser/a.js'), true);
   assert.equal(matchUrl('https://x.example/a%2Fb.js', 'https://x.example/a/b.js'), false, 'an escaped slash is not a slash');
 });
+
+test('a whole-segment {token} takes any build id the classifier takes, whatever letters it has', () => {
+  assert.equal(matchUrl('https://s.example/_next/static/{token}/_buildManifest.js', 'https://s.example/_next/static/Zk9xqwertyAB12cdEF34g/_buildManifest.js'), true);
+  assert.equal(matchUrl('https://s.example/_next/static/{token}/_buildManifest.js', 'https://s.example/_next/static/chunks/_buildManifest.js'), false, 'too short to be a build id');
+  assert.equal(matchUrl('https://s.example/assets/*-{token}.js', 'https://s.example/assets/index-abcdefgh.js'), false, 'in a file name the token still has to look random');
+});

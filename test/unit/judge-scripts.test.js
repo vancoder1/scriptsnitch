@@ -310,3 +310,15 @@ test('a Next.js deploy, which moves the build manifest to a new build id directo
   st.sites[SITE] = { entrySlots: { [`${SITE}/_next/static/{token}/_buildManifest.js`]: 'aB3dE5fG7hJ9kL1mN3pQ5' }, marker: null, ownHashes: { [ownKey(was)]: H(was).slice(0, 12) }, inline: {}, deployTokens: [], seen: {}, domains: {}, domainCheck: null };
   assert.deepEqual(kinds(run(one('/', { scripts: [ext(now)] }), appr, st)), []);
 });
+
+test('a new file in a Magento version folder needs a deploy, like a build-folder file', () => {
+  const appr = approved({ scripts: [entry({ id: 'static', match: `${SITE}/static/version{version}/**`, trust: 'deploy', pages: ['**', '/checkout'] })] });
+  const v = (n, file) => `${SITE}/static/version${n}/frontend/Magento/luma/en_US/${file}`;
+  const page = (n, extra = []) => one('/checkout', { scripts: [ext(v(n, 'requirejs/require.js')), ext(v(n, 'mage/common.js'), { creator: v(n, 'requirejs/require.js') }), ...extra] }, { sensitive: true });
+  const first = run(page(1700000000), appr);
+  assert.deepEqual(kinds(first), [], 'the first run is the baseline');
+  const dropped = run(page(1700000000, [ext(v(1700000000, 'skim.js'), { creator: v(1700000000, 'requirejs/require.js') })]), appr, first.state);
+  assert.deepEqual(kinds(dropped), ['build-file:high']);
+  const deployed = run(page(1700000099, [ext(v(1700000099, 'checkout.js'), { creator: v(1700000099, 'requirejs/require.js') })]), appr, first.state);
+  assert.deepEqual(kinds(deployed), [], 'a deploy moves the whole folder');
+});

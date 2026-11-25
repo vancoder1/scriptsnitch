@@ -53,6 +53,9 @@ function segmentRegex(segment) {
 }
 
 function matchSegment(pattern, segment) {
+  // A whole segment that is a build id (Next.js's /_next/static/<id>/) is any token-shaped name, as
+  // the URL classifier takes it; inside a file name the token still has to look random.
+  if (pattern === '{token}') return /^[A-Za-z0-9_-]{8,64}$/.test(segment);
   const { regex, tokenGroups } = segmentRegex(pattern);
   const m = regex.exec(segment);
   if (!m) return false;

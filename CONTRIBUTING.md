@@ -46,10 +46,12 @@ changes one thing.
 - **`pending` never approves.** The loader ignores the `pending` list, High findings are only ever
   proposed there, and moving an item out takes a deliberate act (a hand edit, `approve --id`, or a
   comment). Nothing may route a High proposal into a live section.
-- **Never touch a branch a person pushed to.** The approval pull request is changed only while every
-  commit on its branch is the bot's (`src/report/pr.js`). Never force-push, ever.
-- **Never retry a POST.** A create that timed out may have gone through (`src/report/github.js`); the
-  next run is the retry.
+- **Never touch a branch a person pushed to.** Scheduled runs change the approval pull request only
+  while every commit on its branch is the bot's (`src/report/pr.js`). The one exception is the
+  comment command, which a person with write access asks for: it adds one commit to the open approval
+  branch, refusing on a conflict. Never force-push, ever.
+- **Never retry a write.** A create or an update that timed out may have gone through
+  (`src/report/github.js`); only reads are retried, and the next run is the retry.
 - **Inconclusive resolves nothing.** A page that could not be checked raises nothing and closes
   nothing. A failed or missing snapshot changes nothing but the status issue.
 - **Nothing reaches the site.** The probe's requests are answered locally, its connections are cut

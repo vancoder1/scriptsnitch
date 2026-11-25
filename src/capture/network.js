@@ -21,7 +21,7 @@ export function createNetLog(ctx) {
     if (existing && p.redirectResponse) {
       let n = 1;
       while (requests.has(`${p.requestId}#${n}`)) n++;
-      requests.set(`${p.requestId}#${n}`, { ...existing, requestId: `${p.requestId}#${n}`, status: p.redirectResponse.status, done: true });
+      requests.set(`${p.requestId}#${n}`, { ...existing, requestId: `${p.requestId}#${n}`, status: p.redirectResponse.status, done: true, hop: true });
       existing = { sessionId: existing.sessionId, startedAt: Date.now(), done: false, phase: existing.phase };
     }
     const entry = existing ?? { sessionId, startedAt: Date.now(), done: false, phase };
@@ -90,7 +90,7 @@ export function createNetLog(ctx) {
     scriptRequest(url, sessionId) {
       let found = null;
       for (const r of requests.values()) {
-        if (r.url === url && r.type === 'Script' && (sessionId === undefined || r.sessionId === sessionId) && !r.failed) found = r;
+        if (r.url === url && r.type === 'Script' && !r.hop && (sessionId === undefined || r.sessionId === sessionId) && !r.failed) found = r;
       }
       return found;
     },
@@ -102,10 +102,11 @@ export function createNetLog(ctx) {
     },
     // Every script a session fetched, for a script that gave itself another name.
     scriptRequests(sessionId) {
-      return [...requests.values()].filter((r) => r.type === 'Script' && (sessionId === undefined || r.sessionId === sessionId) && !r.failed);
+      return [...requests.values()].filter((r) => r.type === 'Script' && !r.hop && (sessionId === undefined || r.sessionId === sessionId) && !r.failed);
     },
     destinationRequests() {
-      return [...requests.values()].filter((r) => !NOT_DESTINATIONS.has(r.type) && !/^(data|blob):/i.test(r.url));
+      // A hop that answered with a redirect is a destination whatever was asked for: it got the request.
+      return [...requests.values()].filter((r) => (r.hop || !NOT_DESTINATIONS.has(r.type)) && !/^(data|blob):/i.test(r.url));
     },
   };
 }

@@ -22,3 +22,12 @@ test('every hop of a redirect is a request of its own', () => {
   assert.deepEqual(urls, [['https://collect.evil.example/c', 307], ['https://api.shop.example/ok', null]]);
   assert.equal(log.inFlight(30000), 0, 'the earlier hop is finished');
 });
+
+test('a script or document request that is redirected counts its earlier hops as destinations', () => {
+  const ctx = fakeCtx();
+  const log = createNetLog(ctx);
+  ctx.emit('Network.requestWillBeSent', { requestId: 's1', type: 'Script', request: { url: 'https://collect.evil.example/s.js?d=4111111111111111', method: 'GET', headers: {} }, initiator: null });
+  ctx.emit('Network.requestWillBeSent', { requestId: 's1', type: 'Script', request: { url: 'https://cdn.example/lib.js', method: 'GET', headers: {} }, initiator: null, redirectResponse: { status: 302 } });
+  assert.deepEqual(log.destinationRequests().map((r) => r.url), ['https://collect.evil.example/s.js?d=4111111111111111']);
+  assert.equal(log.scriptRequest('https://cdn.example/lib.js').requestId, 's1', 'the script itself is the last hop');
+});

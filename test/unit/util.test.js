@@ -52,6 +52,13 @@ test('readZip reads stored and deflated entries', () => {
   assert.equal(files.get('evidence/b.js').toString(), 'x'.repeat(5000));
 });
 
+test('readZip refuses an entry that inflates past its limit', () => {
+  // 64 MB of zeros deflate to about 64 KB.
+  const bomb = writeZip([{ name: 'evidence/big.js', data: Buffer.alloc(64 * 1024 * 1024), deflate: true }]);
+  assert.throws(() => readZip(bomb), /too large/);
+  assert.equal(readZip(bomb, { maxEntry: 128 * 1024 * 1024 }).get('evidence/big.js').length, 64 * 1024 * 1024);
+});
+
 test('readZip rejects data that is not a zip', () => {
   assert.throws(() => readZip(Buffer.from('not a zip at all')), /not a zip/i);
 });

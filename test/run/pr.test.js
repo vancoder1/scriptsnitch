@@ -110,3 +110,13 @@ test('a site with no approved file yet gets one', async () => {
   await sync(gh, [routine('a')]);
   assert.deepEqual(branchFile(gh).scripts.map((e) => e.id), ['chat-a']);
 });
+
+test('finding keys and URLs with pipes stay in their table cells', async () => {
+  const gh = fresh();
+  const match = 'https://evil.example/a.js|[x](https://phish.example)';
+  const evil = { ...pending, finding: `new-origin|${match}|*`, entry: { ...pending.entry, id: 'evil-a', match } };
+  const r = await sync(gh, [routine('a'), evil]);
+  const rows = gh.state.pulls.find((p) => p.number === r.prNumber).body.split('\n').filter((l) => l.startsWith('|'));
+  assert.ok(rows.length >= 4);
+  for (const row of rows) assert.equal(row.split(/(?<!\\)\|/).length - 2, 3, row);
+});

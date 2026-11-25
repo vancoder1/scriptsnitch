@@ -119,3 +119,13 @@ test('the status issue body stays under GitHub\'s limit however large the state 
   await reconcileStatus(gh, { issue, previous: state, state: big, run: runInfo(), now: day(0), notes: [] });
   assert.ok(statusIssues(gh)[0].body.length < 65536);
 });
+
+test('a page path with a pipe stays in its table cell', async () => {
+  const gh = createFakeGitHub();
+  const info = runInfo();
+  info.pages[1].path = '/checkout|x';
+  await oneRun(gh, 0, info);
+  const rows = statusIssues(gh)[0].body.split('\n').filter((l) => l.startsWith('|'));
+  assert.ok(rows.length >= 4);
+  for (const row of rows) assert.equal(row.split(/(?<!\\)\|/).length - 2, 3, row);
+});

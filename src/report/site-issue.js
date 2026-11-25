@@ -3,7 +3,7 @@
 // two conclusive runs without it and returns silently within 30 days; a vanished High stays listed
 // until a person closes the issue. Closing by hand mutes what is in it; a new key reopens it.
 import { readMarker, writeMarker } from './markers.js';
-import { md, code } from './text.js';
+import { md, code, cellCode } from './text.js';
 import { emptySiteState } from '../state.js';
 import { isoDate, daysBetween } from '../util/time.js';
 import { LABEL } from './status-issue.js';
@@ -26,12 +26,13 @@ export async function readSites(github) {
 }
 
 const hostOf = (site) => { try { return new URL(site).host; } catch { return site; } };
-const where = (e) => `${(e.seenOn?.length ? e.seenOn : [e.page]).map(code).join(', ')}${e.profiles?.length ? ` (${e.profiles.join(', ')})` : ''}`;
+// `c` is the code span to use: cellCode inside a table, code elsewhere.
+const where = (e, c = code) => `${(e.seenOn?.length ? e.seenOn : [e.page]).map(c).join(', ')}${e.profiles?.length ? ` (${e.profiles.map(md).join(', ')})` : ''}`;
 const row = (key, e, today, links) => {
   const gone = e.last !== today ? `**Not seen since ${e.last}.** ` : '';
   const why = `${gone}${e.reasons.map(md).join('<br>')}${links.evidenceUrl ? ` [evidence](${links.evidenceUrl})` : ''}`;
   const approve = e.severity === 'high' ? 'pending' : 'routine';
-  return `| ${BADGE[e.severity] ?? e.severity} | ${code(e.kind)} ${code(e.subject)} | ${where(e)} | ${why} | ${links.prUrl ? `[${approve}](${links.prUrl})` : approve} |`;
+  return `| ${BADGE[e.severity] ?? e.severity} | ${cellCode(e.kind)} ${cellCode(e.subject)} | ${where(e, cellCode)} | ${why} | ${links.prUrl ? `[${approve}](${links.prUrl})` : approve} |`;
 };
 const table = (entries, today, links) => ['| Severity | Finding | Where | Why | To approve |', '| --- | --- | --- | --- | --- |', ...entries.map(([k, e]) => row(k, e, today, links))].join('\n');
 const order = ([, a], [, b]) => Number(b.severity === 'high') - Number(a.severity === 'high') || a.first.localeCompare(b.first);

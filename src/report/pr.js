@@ -6,7 +6,7 @@
 import { parseApproved, emptyApproved, serializeApproved, entryKey, siteSection } from '../config/approved.js';
 import { applyProposals } from '../analyze/proposals.js';
 import { readMarker, writeMarker } from './markers.js';
-import { md, code, fence } from './text.js';
+import { md, code, cellCode, fence } from './text.js';
 import { HttpError } from './github.js';
 
 const NOT_PERMITTED = /not permitted to create or approve pull requests/i;
@@ -42,18 +42,19 @@ function siteOf(host) {
   return labels.slice(-n).join('.');
 }
 
-function describe(p) {
-  if (p.remove) return `remove ${p.section} entry ${code(p.id)}: not seen for 30 days`;
-  if (p.section === 'headers') return `set the header baseline for ${code(p.id)}: ${Object.keys(p.add).map(code).join(', ')}`;
+// `c` is the code span to use: cellCode inside a table, code elsewhere.
+function describe(p, c = code) {
+  if (p.remove) return `remove ${p.section} entry ${c(p.id)}: not seen for 30 days`;
+  if (p.section === 'headers') return `set the header baseline for ${c(p.id)}: ${Object.keys(p.add).map(c).join(', ')}`;
   if (p.entry) {
     const e = p.entry;
-    const what = p.section === 'scripts' ? (e.match === 'inline' ? `inline scripts on ${e.pages.map(code).join(', ')}` : code(e.match)) : p.section === 'fields' ? code(`${e.frame} ${e.form} ${e.field} ${e.kind}`) : p.section === 'allow' ? code(e.what) : code(e.match);
-    return `new ${p.section} entry ${what}${e.trust ? ` with ${code(e.trust)} trust` : ''}${e.receives?.length ? `, may receive ${e.receives.map(code).join(', ')}` : ''}`;
+    const what = p.section === 'scripts' ? (e.match === 'inline' ? `inline scripts on ${e.pages.map(c).join(', ')}` : c(e.match)) : p.section === 'fields' ? c(`${e.frame} ${e.form} ${e.field} ${e.kind}`) : p.section === 'allow' ? c(e.what) : c(e.match);
+    return `new ${p.section} entry ${what}${e.trust ? ` with ${c(e.trust)} trust` : ''}${e.receives?.length ? `, may receive ${e.receives.map(c).join(', ')}` : ''}`;
   }
-  return `add ${Object.entries(p.add).map(([k, v]) => `${code(k)} ${code(JSON.stringify(v))}`).join(', ')} to ${p.section} entry ${code(p.id)}`;
+  return `add ${Object.entries(p.add).map(([k, v]) => `${c(k)} ${c(JSON.stringify(v))}`).join(', ')} to ${p.section} entry ${c(p.id)}`;
 }
 
-const rows = (list) => ['| Severity | Change | Finding |', '| --- | --- | --- |', ...list.map((p) => `| ${BADGE[p.severity] ?? 'routine'} | ${describe(p)} | ${p.finding ? code(p.finding) : ''} |`)];
+const rows = (list) => ['| Severity | Change | Finding |', '| --- | --- | --- |', ...list.map((p) => `| ${BADGE[p.severity] ?? 'routine'} | ${describe(p, cellCode)} | ${p.finding ? cellCode(p.finding) : ''} |`)];
 
 function renderBody({ site, path, proposals, liveKeys, known, approved }) {
   const pending = proposals.filter((p) => p.mode === 'pending');

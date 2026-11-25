@@ -53,7 +53,9 @@ changes one thing.
   before the browser context closes, and its values are fake. Keep it that way, and keep scriptsnitch
   invisible to the page: no `Runtime.enable`, `Console.enable` or `Log.enable` on page sessions.
 - **Web text is hostile.** Script URLs, code, header values and page titles reach GitHub only through
-  `src/report/text.js` (`md`, `code`, `fence`), which escapes them and stops mentions and links.
+  `src/report/text.js` (`md`, `code`, `fence`), which escapes them and stops mentions and links. In a
+  table cell use `cellCode`, not `code`: GitHub splits a cell at a pipe even inside a code span, and
+  URLs may hold pipes.
 - **The browser holds no secrets.** Chrome gets an allowlisted environment, the collect job holds a
   read-only token, and step secrets are redacted from everything written.
 - **No dependencies.** Node built-ins only. A security tool should not bring its own supply chain, and

@@ -4,7 +4,7 @@
 // recovers, and when the fire drill result changes.
 import { readMarker, writeMarker, fitStatusState } from './markers.js';
 import { emptyStatusState } from '../state.js';
-import { md, code } from './text.js';
+import { md, code, cellCode } from './text.js';
 import { isoDate, isoTime } from '../util/time.js';
 
 export const STATUS_TITLE = 'scriptsnitch status';
@@ -19,7 +19,7 @@ export async function readStatus(github) {
 }
 
 const pageKey = (p) => `${p.site}${p.path}|${p.profile}`;
-const label = (p) => `${md(p.name ?? p.path)} (${code(p.path)}, ${p.profile})`;
+const label = (p) => `${md(p.name ?? p.path)} (${cellCode(p.path)}, ${md(p.profile)})`;
 const lastDrill = (log) => [...log].reverse().find((l) => l[4])?.[4] ?? null;
 
 function duration(run) {

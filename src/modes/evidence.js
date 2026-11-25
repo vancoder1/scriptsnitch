@@ -6,7 +6,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { siteSection, entryKey } from '../config/approved.js';
 import { parseJsonText } from '../util/json.js';
-import { md, code } from '../report/text.js';
+import { md, code, cellCode } from '../report/text.js';
 import { daysBetween } from '../util/time.js';
 
 const run = promisify(execFile);
@@ -58,7 +58,8 @@ export async function approvalHistoryFromGit(approvedPath, { cwd = process.cwd()
 }
 
 const row = (cells) => `| ${cells.join(' | ')} |`;
-const pages = (e) => (e.pages ?? ['**']).map(code).join(', ');
+// `c` is the code span to use: cellCode inside a table, code elsewhere.
+const pages = (e, c = code) => (e.pages ?? ['**']).map(c).join(', ');
 
 function inventory(approved) {
   const lines = [];
@@ -67,21 +68,21 @@ function inventory(approved) {
     lines.push(`### ${code(site)}`, '');
     if (s.own.length) lines.push(`Own origins: ${s.own.map(code).join(', ')}.`, '');
     lines.push('**Scripts**', '', row(['Entry', 'Script', 'Pages', 'Trust', 'Integrity assured by', 'Reason', 'Proposed']), row(Array(7).fill('---')));
-    for (const e of s.scripts) lines.push(row([code(e.id), e.match === 'inline' ? 'inline scripts' : code(e.match), pages(e), e.trust, INTEGRITY[e.trust](e), md(e.reason), e.approved]));
+    for (const e of s.scripts) lines.push(row([cellCode(e.id), e.match === 'inline' ? 'inline scripts' : cellCode(e.match), pages(e, cellCode), e.trust, INTEGRITY[e.trust](e), md(e.reason), e.approved]));
     lines.push('');
     if (s.destinations.length) {
       lines.push('**Where data may go**', '', row(['Destination', 'Pages', 'May receive', 'Reason', 'Proposed']), row(Array(5).fill('---')));
-      for (const d of s.destinations) lines.push(row([code(d.match), pages(d), d.receives?.length ? d.receives.join(', ') : 'nothing typed into forms', md(d.reason), d.approved]));
+      for (const d of s.destinations) lines.push(row([cellCode(d.match), pages(d, cellCode), d.receives?.length ? d.receives.map(md).join(', ') : 'nothing typed into forms', md(d.reason), d.approved]));
       lines.push('');
     }
     if (s.frames.length) {
       lines.push('**Frames**', '', row(['Frame', 'Pages', 'Sensitive fields', 'Reason', 'Proposed']), row(Array(5).fill('---')));
-      for (const f of s.frames) lines.push(row([code(f.match), pages(f), f.fields?.length ? f.fields.join(', ') : 'none', md(f.reason), f.approved]));
+      for (const f of s.frames) lines.push(row([cellCode(f.match), pages(f, cellCode), f.fields?.length ? f.fields.map(md).join(', ') : 'none', md(f.reason), f.approved]));
       lines.push('');
     }
     if (s.fields.length) {
       lines.push('**Sensitive fields**', '', row(['Field', 'Pages', 'Count', 'Reason', 'Proposed']), row(Array(5).fill('---')));
-      for (const f of s.fields) lines.push(row([code(`${f.frame} ${f.form} ${f.field} ${f.kind}`), pages(f), f.count ?? 1, md(f.reason), f.approved]));
+      for (const f of s.fields) lines.push(row([cellCode(`${f.frame} ${f.form} ${f.field} ${f.kind}`), pages(f, cellCode), f.count ?? 1, md(f.reason), f.approved]));
       lines.push('');
     }
     if (s.allow.length) {
@@ -122,7 +123,7 @@ export function evidencePack({ approved, approvalHistory = [], statusState, sinc
   ];
   if (approvals.length) {
     lines.push(row(['Date', 'Commit', 'Author', 'Change']), row(Array(4).fill('---')));
-    for (const h of approvals) lines.push(row([h.date, code(h.commit.slice(0, 7)), md(h.author), [h.added.length ? `added ${h.added.map(code).join(', ')}` : '', h.removed.length ? `removed ${h.removed.map(code).join(', ')}` : ''].filter(Boolean).join('; ') || md(h.subject)]));
+    for (const h of approvals) lines.push(row([h.date, code(h.commit.slice(0, 7)), md(h.author), [h.added.length ? `added ${h.added.map(cellCode).join(', ')}` : '', h.removed.length ? `removed ${h.removed.map(cellCode).join(', ')}` : ''].filter(Boolean).join('; ') || md(h.subject)]));
   } else lines.push('No changes to the approved file in this period.');
   lines.push('', 'The merge commits are the authoritative record of who approved what; branch protection decides who may merge.', '', '## Monitoring runs (11.6.1)', '');
   if (firstLogged) lines.push(`The run log kept in the status issue goes back to ${firstLogged}${firstLogged > since ? '; earlier runs in the period are not recorded here' : ''}.`, '');

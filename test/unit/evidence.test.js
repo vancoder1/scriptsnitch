@@ -58,6 +58,19 @@ test('attributes approvals to commits from a fixture history', () => {
   assert.match(md, /removed[^\n]*old-widget/);
 });
 
+test('a match with a pipe stays in its table cell', () => {
+  const piped = approved({ scripts: [entry({ id: 'odd', match: 'https://cdn.example/a|b.js', trust: 'origin', reason: 'r' })], destinations: [{ match: 'https://api.example/x|y', pages: ['**'], reason: 'r', approved: '2026-11-01' }] });
+  const history = [{ commit: '9f1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c', author: 'Alex Doe', date: '2026-11-02', subject: 's', added: ['odd', 'destinations: https://api.example/x|y'], removed: [] }];
+  const md = evidencePack({ approved: piped, approvalHistory: history, statusState: status(), since: '2026-09-01', until: '2026-11-30', generatedAt: '2026-11-30' });
+  const cells = (row) => row.split(/(?<!\\)\|/).length - 2;
+  let header = null;
+  for (const line of md.split('\n')) {
+    if (!line.startsWith('|')) { header = null; continue; }
+    header ??= cells(line);
+    assert.equal(cells(line), header, line);
+  }
+});
+
 test('reads the approval history from git', async (t) => {
   const dir = mkdtempSync(join(tmpdir(), 'scriptsnitch-git-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));

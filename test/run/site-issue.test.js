@@ -148,3 +148,10 @@ test('a finding still observed but no longer raised was approved and is resolved
   assert.equal(issuesFor(gh)[0].state, 'closed');
   assert.ok(!issuesFor(gh)[0].body.includes('Not seen since'));
 });
+
+test('a subject with a pipe cannot break out of its table cell', async () => {
+  const gh = createFakeGitHub();
+  await step(gh, 0, [f('new-origin', 'https://evil.example/a.js|[x](https://phish.example)', 'high')]);
+  const rows = issuesFor(gh)[0].body.split('\n').filter((l) => l.startsWith('|'));
+  for (const row of rows) assert.equal(row.split(/(?<!\\)\|/).length - 2, 5, row);
+});

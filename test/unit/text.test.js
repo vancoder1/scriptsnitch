@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { md, neutralize, fence, code } from '../../src/report/text.js';
+import { md, neutralize, fence, code, cellCode } from '../../src/report/text.js';
 
 const ZWJ = '‍';
 
@@ -41,4 +41,11 @@ test('fence survives a script containing triple backticks', () => {
 test('code wraps inline text in a span that backticks inside cannot close', () => {
   assert.equal(code('a`b'), '`` a`b ``');
   assert.equal(code('x'), '`x`');
+});
+
+test('cellCode escapes every pipe, so text in a table cell cannot split it', () => {
+  // GitHub never splits a table cell at a pipe with a backslash before it.
+  const out = cellCode('https://evil.example/a.js|[x](https://phish.example)\\|');
+  assert.ok(!/(?<!\\)\|/.test(out), out);
+  assert.equal(cellCode('x'), '`x`');
 });

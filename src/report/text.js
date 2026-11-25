@@ -41,3 +41,8 @@ export function code(text) {
   const ticks = '`'.repeat(run + 1);
   return `${ticks} ${s} ${ticks}`;
 }
+
+// An inline code span for a table cell. GitHub splits a cell at every pipe, even inside a code span,
+// unless a backslash comes before it (it then shows a plain pipe). Script URLs may hold pipes, and
+// without this the rest of a URL would leave its cell as live Markdown.
+export const cellCode = (text) => code(text).replace(/\|/g, '\\|');

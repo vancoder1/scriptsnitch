@@ -1266,3 +1266,18 @@ From the release review:
   with a note. Only reads are retried.
 - **Configuration (section 15).** Duplicate keys and two pages on one path are refused; `notify` takes
   teams as `org/team`.
+- **Inline identity (section 8).** A framework data script is only one of the shapes frameworks write
+  (an assignment or a push of data, or Nuxt's function that returns data from its parameters); a call
+  or a statement anywhere makes it code. A line comment ends at every JavaScript line terminator.
+  Strings handed to `setAttribute` for a handler or an address, `javascript:` addresses and indirect
+  `eval` are code; a price such as `"19.99"` is not a host name.
+- **Inheritance across a cloud company's hosts (section 8).** For companies whose name covers hosting
+  (Google, Microsoft, Amazon Web Services) a script from another host inherits a loader's trust only
+  from a host listed as serving the company's own code (`data/vendor-own-hosts.json`).
+- **Build folders (section 8).** A reported build file's entry slot is not remembered, so it is reported
+  again; a new file in a version folder needs a first run, a deploy or a known entry slot. A
+  `deployMarker` taken out of the config is forgotten.
+- **Probe (section 11).** Frames that have gone leave the context, a lost probe is named on the status
+  issue, and GraphQL operations are compared one by one in the growth test.
+- **State (section 6).** The site marker keeps compact entries (kind, subject and page come from the
+  key), so a busy site's findings are remembered whole; content and template fingerprints are 96 bits.

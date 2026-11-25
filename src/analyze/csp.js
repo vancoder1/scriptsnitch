@@ -18,12 +18,13 @@ function normalizeSource(source) {
   return slash === -1 ? source.toLowerCase() : source.slice(0, slash).toLowerCase() + source.slice(slash);
 }
 
-// A policy is a Map of directive -> Set of sources. Only the first policy of a header counts, and
-// the first occurrence of a directive wins, as browsers do.
+// A policy is a Map of directive -> Set of sources, the first occurrence of a directive winning, as
+// browsers do. Policies are separated by commas, and Chrome joins two headers with a newline. Only the
+// first is compared: any further policy can only restrict more.
 export function parseCsp(value) {
   if (value === null || value === undefined || !String(value).trim()) return null;
   const policy = new Map();
-  for (const part of String(value).split(',')[0].split(';')) {
+  for (const part of String(value).split(/[,\n]/)[0].split(';')) {
     const [name, ...sources] = part.trim().split(/\s+/);
     if (!name) continue;
     const directive = name.toLowerCase();

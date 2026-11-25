@@ -78,3 +78,9 @@ test('CSP comparisons flow through compareHeaders', () => {
   const r = compareHeaders({ 'content-security-policy': { 'script-src': ["'self'"] } }, { 'content-security-policy': "script-src 'self' https://chat.example" });
   assert.deepEqual(r.newCspSources, ['script-src https://chat.example']);
 });
+
+test('two CSP headers, which Chrome joins with a newline, are two policies, not one', () => {
+  const p = parseCsp("script-src 'self' https://js.stripe.com\nconnect-src 'self'");
+  assert.deepEqual([...p.keys()], ['script-src']);
+  assert.deepEqual([...p.get('script-src')].sort(), ["'self'", 'https://js.stripe.com']);
+});

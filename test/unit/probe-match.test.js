@@ -97,3 +97,9 @@ test('growthFields measures JSON fields one by one, and a body that is one JSON 
   assert.deepEqual(at(JSON.stringify({ d: 'A'.repeat(64), n: 1 }), JSON.stringify({ d: 'B'.repeat(112), n: 2 })), [{ url: 'https://evil.example/c', field: 'd' }]);
   assert.deepEqual(at(JSON.stringify('A'.repeat(64)), JSON.stringify('B'.repeat(112))), [{ url: 'https://evil.example/c', field: '' }]);
 });
+
+test('growthFields compares the largest of each field on both sides, not whichever request came last', () => {
+  const op = (name, size) => ({ method: 'POST', url: 'https://shop.example/graphql', body: JSON.stringify({ operationName: name, query: 'q'.repeat(size) }) });
+  assert.deepEqual(growthFields([op('Cart', 2000), op('Menu', 500)], [op('Menu', 500), op('Cart', 2000)], 48), []);
+  assert.deepEqual(growthFields([op('Cart', 2000), op('Menu', 500)], [op('Menu', 500), op('Cart', 2100)], 48), [{ url: 'https://shop.example/graphql', field: 'query' }]);
+});

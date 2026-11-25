@@ -2,7 +2,7 @@
 // script, because behaviour can change while content does not. Behaviour fields of an entry
 // (eval, obfuscation, hostnames) are judged only for approved scripts: a new script's proposal
 // already carries what it was seen doing.
-import { classifyUrl, slotOf } from './urls.js';
+import { classifyUrl, slotOf, isBuildToken } from './urls.js';
 import { accountKey, sharedHostKind } from './hosts.js';
 import { coveringScripts, coveringDestinations, originOf } from './approval.js';
 import { isIgnoredHost } from './hostnames.js';
@@ -121,8 +121,13 @@ export function endpointOf(url, method) {
   let u;
   try { u = new URL(url); } catch { return `${method} ${url}`; }
   const key = accountKey(url);
-  return `${method} ${u.protocol}//${u.host}${u.pathname}${key?.where === 'query' ? `?${key.param}=${key.key}` : ''}`;
+  return `${method} ${u.protocol}//${u.host}${maskIds(u.pathname)}${key?.where === 'query' ? `?${key.param}=${key.key}` : ''}`;
 }
+
+// Path segments a session fills in (a cart id, an order number, a UUID) become `*`, so the endpoint
+// is the same on every visit and its approval, a destination pattern, covers them all.
+const ID_SEGMENT = /^(?:\d{6,}|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
+const maskIds = (path) => path.split('/').map((s) => (ID_SEGMENT.test(s) || (isBuildToken(s) && /\d/.test(s)) ? '*' : s)).join('/');
 
 function judgeProbe(ctx, page, profile, v, id) {
   if (!v.probe) return;

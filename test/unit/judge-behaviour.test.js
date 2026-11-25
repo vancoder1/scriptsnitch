@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { judge, combine, confirm } from '../../src/analyze/judge.js';
-import { destinationSubject } from '../../src/analyze/judge-behaviour.js';
+import { destinationSubject, endpointOf } from '../../src/analyze/judge-behaviour.js';
 import { firstRunSplit } from '../../src/analyze/firstrun.js';
 import { findingKey } from '../../src/analyze/keys.js';
 import { DRILL_ORIGIN } from '../../src/capture/drill.js';
@@ -445,4 +445,12 @@ test('a <link> host the page also shows without the probe stays Medium in the pr
   const linkHosts = ['fonts.example'];
   const r = run(snapshot([{ path: '/', visits: [visit({ role: 'A', scripts, linkHosts }), visit({ role: 'B', scripts, linkHosts }), visit({ role: 'probe', scripts, linkHosts, probe: p })] }]), appr);
   assert.deepEqual(kinds(r), ['new-destination:medium']);
+});
+
+test('an endpoint keeps its path but not the ids a session puts in it', () => {
+  assert.equal(endpointOf('https://shop.example/cart/8f3a9c2e-1b4d-4e5f-9a0b-7c6d5e4f3a2b/items?x=1', 'POST'), 'POST https://shop.example/cart/*/items');
+  assert.equal(endpointOf('https://shop.example/checkout/1234567890/pay', 'POST'), 'POST https://shop.example/checkout/*/pay');
+  assert.equal(endpointOf('https://shop.example/s/aB3dE5fG7hJ9/collect', 'POST'), 'POST https://shop.example/s/*/collect');
+  assert.equal(endpointOf('https://shop.example/api/v2/login', 'POST'), 'POST https://shop.example/api/v2/login', 'ordinary words stay');
+  assert.equal(endpointOf('https://c2.example/p', 'GET'), 'GET https://c2.example/p');
 });

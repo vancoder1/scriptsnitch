@@ -120,21 +120,29 @@ function fieldsOf(request) {
 
 const endpoint = (r) => { try { const u = new URL(r.url); return `${r.method} ${u.origin}${u.pathname}`; } catch { return `${r.method} ${r.url}`; } };
 
+// The largest size of each field, per endpoint, over a probe's requests. One endpoint carries several
+// kinds of request (GraphQL operations, batched analytics), so which one came last says nothing.
+function largestFields(requests) {
+  const out = new Map();
+  for (const r of requests) {
+    const key = endpoint(r);
+    const fields = out.get(key) ?? out.set(key, new Map()).get(key);
+    for (const [field, size] of fieldsOf(r)) fields.set(field, Math.max(fields.get(field) ?? 0, size));
+  }
+  return out;
+}
+
 // Request fields whose size grew by at least three quarters of the extra input between two probes.
 export function growthFields(before, after, lengthDelta) {
   const out = [];
-  const seen = new Set();
-  const earlier = new Map(before.map((r) => [endpoint(r), fieldsOf(r)]));
-  for (const r of after) {
-    const key = endpoint(r);
+  const earlier = largestFields(before);
+  for (const [key, fields] of largestFields(after)) {
     const old = earlier.get(key);
     if (!old) continue;
-    for (const [field, size] of fieldsOf(r)) {
+    for (const [field, size] of fields) {
       const was = old.get(field);
       if (was === undefined || size - was < 0.75 * lengthDelta) continue;
-      const url = key.slice(key.indexOf(' ') + 1);
-      const id = `${url}|${field}`;
-      if (!seen.has(id)) { seen.add(id); out.push({ url, field }); }
+      out.push({ url: key.slice(key.indexOf(' ') + 1), field });
     }
   }
   return out;

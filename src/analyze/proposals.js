@@ -192,7 +192,10 @@ export function headerBaseline(byPath) {
   return out;
 }
 
-export function proposalsFor(findings, approved, { now = Date.now(), headers = {} } = {}) {
+// `established`: sites whose first approval pull request is open. They are past their first run: a
+// script that appears while that pull request waits is proposed as anything new is, never as part of
+// the inventory that merging approves.
+export function proposalsFor(findings, approved, { now = Date.now(), headers = {}, established = new Set() } = {}) {
   const today = isoDate(now);
   const proposals = [];
   for (const f of findings) {
@@ -200,7 +203,7 @@ export function proposalsFor(findings, approved, { now = Date.now(), headers = {
     const p = proposalFor(f, siteSection(approved, f.site), today);
     if (p) proposals.push(p);
   }
-  const firstRunSites = new Set([...findings.map((f) => f.site), ...Object.keys(headers)].filter((s) => !approved.sites[s]));
+  const firstRunSites = new Set([...findings.map((f) => f.site), ...Object.keys(headers)].filter((s) => !approved.sites[s] && !established.has(s)));
   for (const site of firstRunSites) {
     for (const [pattern, values] of Object.entries(headerBaseline(headers[site] ?? {}))) {
       proposals.push({ site, finding: null, severity: null, section: 'headers', mode: 'routine', id: pattern, add: values });

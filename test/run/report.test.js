@@ -100,6 +100,18 @@ test('first run opens an initial approval PR and an issue saying nothing is appr
   assert.equal(r.exitCode, 0);
 });
 
+test('while the first approval pull request waits, a new script is proposed as pending, not as inventory', async (t) => {
+  const h = harness();
+  t.after(() => rmSync(h.dir, { recursive: true, force: true }));
+  await doRun(h, 0, snap());
+  const evil = 'https://evil.example/x.js';
+  await doRun(h, 1, snap(observed(), observed({ extra: [ext(evil)] })));
+  const pr = openPulls(h.gh)[0];
+  const file = parseApproved(h.gh.file(PATH, pr.head.ref), PATH).sites[SITE];
+  assert.ok(!file.scripts.some((e) => e.match === evil), 'merging the first pull request must not approve it');
+  assert.ok(file.pending.some((p) => p.entry?.match === evil));
+});
+
 test('a clean second run after merging closes nothing it should not', async (t) => {
   const h = await establish();
   t.after(() => rmSync(h.dir, { recursive: true, force: true }));

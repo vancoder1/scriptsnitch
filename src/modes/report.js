@@ -114,8 +114,8 @@ export async function report({ snapshotPath, outDir = dirname(snapshotPath), con
 
   for (const [site, group] of bySite) {
     const st = siteState(state, site);
-    const firstRun = !approved.sites[site];
-    const proposals = proposalsFor([...group.findings, ...(firstRun ? group.held : [])], approved, { now, headers: { [site]: result.headers[site] ?? {} } });
+    const firstRun = !approved.sites[site] && !hasOpenPr(site);
+    const proposals = proposalsFor([...group.findings, ...(firstRun ? group.held : [])], approved, { now, headers: { [site]: result.headers[site] ?? {} }, established: hasOpenPr(site) ? new Set([site]) : new Set() });
     // Stale entries ride with other proposals or an open pull request, or go alone once a month.
     const stale = staleProposals({ ...approved, sites: approved.sites[site] ? { [site]: approved.sites[site] } : {} }, state, now);
     if (stale.length && (proposals.length || hasOpenPr(site) || !st.staleAt || daysBetween(st.staleAt, today) >= STALE_ALONE_DAYS)) {

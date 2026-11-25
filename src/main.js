@@ -28,6 +28,16 @@ function readEvent(env) {
   try { return env.GITHUB_EVENT_PATH ? JSON.parse(readFileSync(env.GITHUB_EVENT_PATH, 'utf8')) : {}; } catch { return {}; }
 }
 
+// Step secrets for the page steps, masked in the job log first. GitHub masks one line per
+// ::add-mask::, so a multi-line value is masked line by line.
+function maskedStepSecrets(env, log) {
+  const secrets = stepSecrets(env);
+  for (const value of Object.values(secrets)) {
+    for (const line of value.split(/\r?\n/)) if (line.trim()) log.log(`::add-mask::${line}`);
+  }
+  return secrets;
+}
+
 export async function main(env = process.env, { githubFactory = createGitHub, log = console } = {}) {
   const output = (name, value) => { if (env.GITHUB_OUTPUT) appendFileSync(env.GITHUB_OUTPUT, `${name}=${value}\n`); };
   try {
@@ -53,8 +63,7 @@ export async function main(env = process.env, { githubFactory = createGitHub, lo
 
     switch (o.mode) {
       case 'collect': {
-        const secrets = stepSecrets(env);
-        for (const value of Object.values(secrets)) log.log(`::add-mask::${value}`);
+        const secrets = maskedStepSecrets(env, log);
         if (o.jitter) await sleep(Math.floor(Math.random() * o.jitter * 60000));
         const snapshot = await collect({ config, approved, outDir: o.outDir, executable: findChrome({ chromePath: o.chromePath }), allowNoSandbox: o.allowNoSandbox, drill: o.drill, env: { ...env, ...secrets } });
         const results = snapshot.pages.flatMap((p) => Object.values(p.profiles).filter(Boolean));
@@ -71,8 +80,9 @@ export async function main(env = process.env, { githubFactory = createGitHub, lo
         return r.exitCode;
       }
       case 'check': {
+        const secrets = maskedStepSecrets(env, log);
         const state = o.token && o.repo ? (await readStatus(github())).state : emptyStatusState();
-        const r = await check({ config, approved, outDir: o.outDir, executable: findChrome({ chromePath: o.chromePath }), allowNoSandbox: o.allowNoSandbox, env, state });
+        const r = await check({ config, approved, outDir: o.outDir, executable: findChrome({ chromePath: o.chromePath }), allowNoSandbox: o.allowNoSandbox, env: { ...env, ...secrets }, state });
         const high = r.report.findings.filter((f) => f.severity === 'high').length;
         const medium = r.report.findings.filter((f) => f.severity === 'medium').length;
         output('high', high);

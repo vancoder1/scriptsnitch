@@ -50,3 +50,12 @@ test('collect mode masks step secrets in the log', async (t) => {
   assert.equal(code, 3, 'no Chrome at that path');
   assert.ok(c.lines.includes('::add-mask::hunter2-long'));
 });
+
+test('check mode masks step secrets too, each line of a multi-line one', async (t) => {
+  const dir = workspace(t);
+  const c = capture();
+  const code = await main({ GITHUB_WORKSPACE: dir, INPUT_MODE: 'check', 'INPUT_CHROME-PATH': join(dir, 'no-chrome'), SCRIPTSNITCH_STEP_SECRETS: JSON.stringify({ KEY: 'line-one-secret\nline-two-secret' }) }, c);
+  assert.equal(code, 3, 'no Chrome at that path');
+  assert.ok(c.lines.includes('::add-mask::line-one-secret'), c.lines.join('\n'));
+  assert.ok(c.lines.includes('::add-mask::line-two-secret'));
+});

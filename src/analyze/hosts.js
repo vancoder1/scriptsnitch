@@ -2,6 +2,7 @@
 // registrable-domain candidates used for RDAP.
 import { readFileSync } from 'node:fs';
 import { isIP } from 'node:net';
+import { decodeUnreserved } from '../util/url.js';
 
 const readData = (name) => readFileSync(new URL(`../../data/${name}`, import.meta.url), 'utf8');
 const SHARED = JSON.parse(readData('shared-hosts.json'));
@@ -38,9 +39,11 @@ export function wildcardCoversTenants(hostPattern) {
   return SHARED.path.some((p) => !p.includes('*') && (p === parent || p.endsWith(`.${parent}`)));
 }
 
+// Rules are matched on the path as the server reads it: /%67tm.js is /gtm.js.
 function rulesFor(u) {
   const host = u.hostname.toLowerCase();
-  return KEY_RULES.filter((r) => r.hostRe.test(host) && (!r.path || r.path === u.pathname));
+  const path = decodeUnreserved(u.pathname);
+  return KEY_RULES.filter((r) => r.hostRe.test(host) && (!r.path || r.path === path));
 }
 
 // The account a URL belongs to on a service that serves every customer from one host.
@@ -49,10 +52,11 @@ export function accountKey(url) {
   try { u = new URL(url); } catch { return null; }
   for (const rule of rulesFor(u)) {
     if (rule.param) {
-      const key = u.searchParams.get(rule.param);
+      // A key given more than once is all of its values: no approval names that.
+      const key = [...new Set(u.searchParams.getAll(rule.param).filter(Boolean))].join(',');
       if (key) return { service: rule.service, key, where: 'query', param: rule.param };
     } else {
-      const m = rule.re.exec(u.pathname);
+      const m = rule.re.exec(decodeUnreserved(u.pathname));
       if (m) return { service: rule.service, key: m[1], where: 'path', param: null };
     }
   }

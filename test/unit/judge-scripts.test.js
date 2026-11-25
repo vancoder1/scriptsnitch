@@ -33,6 +33,16 @@ test('new-origin is High for a new account key on an approved service', () => {
   assert.match(r.findings[0].subject, /GTM-EVIL/);
 });
 
+test('an account key given twice, or hidden by percent-encoding, is still a new account', () => {
+  const mine = 'https://www.googletagmanager.com/gtm.js?id=GTM-MINE';
+  const appr = approved({ scripts: [entry({ id: 'gtm', match: mine, trust: 'origin' })] });
+  const twice = run(one('/', { scripts: [ext(mine), ext('https://www.googletagmanager.com/gtm.js?id=GTM-MINE&id=GTM-EVIL')] }), appr);
+  assert.deepEqual(kinds(twice), ['new-origin:high']);
+  assert.match(twice.findings[0].subject, /GTM-EVIL/);
+  assert.deepEqual(kinds(run(one('/', { scripts: [ext(mine), ext('https://www.googletagmanager.com/%67tm.js?id=GTM-EVIL')] }), appr)), ['new-origin:high']);
+  assert.deepEqual(kinds(run(one('/', { scripts: [ext('https://www.googletagmanager.com/%67tm.js?id=GTM-MINE')] }), appr)), [], 'the same file, written another way');
+});
+
 test('new-slot is Medium at an approved origin', () => {
   const r = run(one('/', { scripts: [ext('https://chat.example/widget.js'), ext('https://chat.example/extra.js')] }), approved({ scripts: [entry({ id: 'chat', match: 'https://chat.example/widget.js', trust: 'origin' })] }));
   assert.deepEqual(kinds(r), ['new-slot:medium']);

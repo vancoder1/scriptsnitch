@@ -2,6 +2,7 @@
 // listeners.
 import { domainToASCII } from 'node:url';
 import { isBuildToken } from '../analyze/urls.js';
+import { decodeUnreserved } from '../util/url.js';
 
 const METHODS = new Set(['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS']);
 const FIELD_KINDS = new Set(['password', 'card', 'iban', 'email', 'name']);
@@ -78,10 +79,12 @@ function matchQuery(patternQuery, params, accountKeyParams) {
   const wanted = new URLSearchParams(patternQuery ?? '');
   for (const key of accountKeyParams) {
     if (params.has(key) && !wanted.has(key)) return false;
+    // `id=GTM-MINE&id=GTM-EVIL`: which one the service serves is its business, so neither is approved.
+    if (new Set(params.getAll(key)).size > 1) return false;
   }
   for (const [key, value] of wanted) {
     if (!params.has(key)) return false;
-    if (value !== '*' && params.get(key) !== value) return false;
+    if (value !== '*' && params.getAll(key).some((v) => v !== value)) return false;
   }
   return true;
 }
@@ -98,7 +101,7 @@ export function matchUrl(pattern, url, { accountKeyParams = [] } = {}) {
     const parent = p.host.slice(2);
     if (!host.endsWith(`.${parent}`)) return false;
   } else if (host !== p.host) return false;
-  if (!matchPath(p.path, u.pathname)) return false;
+  if (!matchPath(p.path, decodeUnreserved(u.pathname))) return false;
   return matchQuery(p.query, u.searchParams, accountKeyParams);
 }
 

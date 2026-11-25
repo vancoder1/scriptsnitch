@@ -25,7 +25,10 @@ function challengeVendor(visit) {
 
 export function inconclusiveReason(visit, page, { own, hasApprovedOwn = false, isApprovedOwn = () => false }) {
   if (visit.reason) return visit.reason;
-  const vendor = challengeVendor(visit);
+  // A title, a script host or a final host is something the page itself can plant, to switch judging
+  // off. A real challenge page shows neither the expected content nor any of the site's own scripts.
+  const sawPage = Boolean(page.expect) || visit.scripts.some(isApprovedOwn);
+  const vendor = sawPage ? null : challengeVendor(visit);
   if (vendor) return `bot challenge (${vendor})`;
   if (visit.document.status >= 400) return `the page answered ${visit.document.status}`;
   const origin = originOf(visit.document.finalUrl);

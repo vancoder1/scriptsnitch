@@ -27,6 +27,17 @@ test('bot challenges are recognised by header, title or script host', () => {
   assert.equal(inconclusiveReason(visit({}, { scripts: [{ ref: { url: 'https://ct.captcha-delivery.com/c.js' } }] }), page, { own }), 'bot challenge (DataDome)');
 });
 
+test('a challenge sign the page itself could plant does not hide a page that loaded', () => {
+  const approvedOwn = (s) => s.ref.url === 'https://shop.example/app.js';
+  const app = { ref: { url: 'https://shop.example/app.js' } };
+  const opts = { own, hasApprovedOwn: true, isApprovedOwn: approvedOwn };
+  assert.equal(inconclusiveReason(visit({}, { scripts: [app, { ref: { url: 'https://ct.captcha-delivery.com/c.js' } }] }), page, opts), null);
+  assert.equal(inconclusiveReason(visit({ title: 'Just a moment...' }, { scripts: [app] }), page, opts), null);
+  assert.equal(inconclusiveReason(visit({ title: 'Just a moment...' }), { ...page, expect: '#cart' }, { own }), null, 'the expected content was found');
+  // A real challenge page loads none of the site's own scripts.
+  assert.equal(inconclusiveReason(visit({ title: 'Just a moment...' }), page, opts), 'bot challenge (Cloudflare)');
+});
+
 test('without expect, a page with approved own scripts must load at least one of them', () => {
   const approvedOwn = (s) => s.ref.url === 'https://shop.example/app.js';
   assert.equal(inconclusiveReason(visit({}, { scripts: [{ ref: { url: 'https://shop.example/maintenance.js' } }] }), page, { own, hasApprovedOwn: true, isApprovedOwn: approvedOwn }), "expected content missing: none of the page's approved own scripts loaded");

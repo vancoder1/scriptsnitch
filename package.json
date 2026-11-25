@@ -1,6 +1,6 @@
 {
   "name": "scriptsnitch",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "private": true,
   "description": "Watches the scripts your web pages run and where they send data, against an approved list in your repository. Unapproved changes become GitHub issues.",
   "keywords": [

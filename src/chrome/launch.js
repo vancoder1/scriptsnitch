@@ -1,5 +1,6 @@
 // Starts Chrome with its debugging pipe on fds 3 and 4, sandbox on, an allowlisted environment
 // and a throwaway profile directory.
+import { ChromeNotFoundError } from './find.js';
 import { spawn, spawnSync } from 'node:child_process';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -43,6 +44,7 @@ function removeDir(dir) {
 }
 
 export async function launchChrome({ executable, allowNoSandbox = false, extraArgs = [], timeoutMs = 30000 }) {
+  if (!executable) throw new ChromeNotFoundError('no Chrome or Chromium was found; install one, or give its path as chrome-path (--chrome on the command line)');
   const userDataDir = mkdtempSync(join(tmpdir(), 'scriptsnitch-'));
   const args = [...CHROME_FLAGS, `--user-data-dir=${userDataDir}`, ...(allowNoSandbox ? ['--no-sandbox'] : []), ...extraArgs, 'about:blank'];
   const child = spawn(executable, args, {

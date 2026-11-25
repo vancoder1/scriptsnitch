@@ -32,3 +32,8 @@ test('chromeEnv keeps only the allowlist, so no token or secret reaches Chrome',
   assert.deepEqual(chromeEnv(env, 'linux'), { PATH: '/bin', HOME: '/home/r', TMPDIR: '/tmp', LANG: 'C.UTF-8' });
   assert.deepEqual(chromeEnv({ Path: 'C:/bin', TEMP: 'C:/t', TMP: 'C:/t', SystemRoot: 'C:/Windows', GITHUB_TOKEN: 'g' }, 'win32'), { Path: 'C:/bin', TEMP: 'C:/t', TMP: 'C:/t', SystemRoot: 'C:/Windows' });
 });
+
+test('with no Chrome found, launching says so plainly', async () => {
+  const { launchChrome } = await import('../../src/chrome/launch.js');
+  await assert.rejects(launchChrome({ executable: null }), (e) => e instanceof ChromeNotFoundError && /chrome-path/.test(e.message));
+});

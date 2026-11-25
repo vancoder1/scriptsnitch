@@ -32,14 +32,19 @@ export function findApprovalPull(pulls, site) {
   }) ?? null;
 }
 
+// Commits pushed with the job's token are authored by its account: github-actions[bot] for
+// GITHUB_TOKEN, <app>[bot] for a GitHub App. No person's login ends in [bot]; a commit whose e-mail is
+// linked to no account has no login and counts as a person's.
+const byBot = (login) => /\[bot\]$/.test(login ?? '');
+
 // A new approval branch started from base. An old bot-only branch is started again; one with a
 // person's commits is left alone (its pull request holds them) and a new name is used.
-export async function startBranch(github, { site, base, botLogin }) {
+export async function startBranch(github, { site, base }) {
   const root = branchFor(site);
   let branch = root;
   for (let n = 2; await github.getRef(`heads/${branch}`); n++) {
     const cmp = await github.compare(base, branch);
-    if (cmp.commits.every((c) => c.author === botLogin)) { await github.deleteRef(`heads/${branch}`); break; }
+    if (cmp.commits.every((c) => byBot(c.author))) { await github.deleteRef(`heads/${branch}`); break; }
     branch = `${root}-${n}`;
   }
   await github.createRef(`heads/${branch}`, await github.getRef(`heads/${base}`));
@@ -106,7 +111,7 @@ async function writeFile(github, { path, branch, site, proposals, message }) {
   return next;
 }
 
-export async function syncApprovalPr(github, { site, proposals, approvedPath, base = 'main', botLogin = 'github-actions[bot]', propose = 'pr' }) {
+export async function syncApprovalPr(github, { site, proposals, approvedPath, base = 'main', propose = 'pr' }) {
   const live = proposals.filter((p) => !p.site || p.site === site);
   const edits = renderEdits(site, live, approvedPath);
   if (propose === 'issue') return { prNumber: null, fallback: live.length ? 'issue' : null, edits };
@@ -121,7 +126,7 @@ export async function syncApprovalPr(github, { site, proposals, approvedPath, ba
     const known = new Set(marker.keys ?? []);
     const deferred = new Set(marker.deferred ?? []);
     const cmp = await github.compare(base, head);
-    const touched = cmp.commits.some((c) => c.author !== botLogin);
+    const touched = cmp.commits.some((c) => !byBot(c.author));
     const fresh = live.filter((p) => !keysOf(p).some((k) => known.has(k)));
     let approved = parseFile(await github.getContent(approvedPath, head), approvedPath);
     if (!touched && fresh.length) {
@@ -147,7 +152,7 @@ export async function syncApprovalPr(github, { site, proposals, approvedPath, ba
   }
   if (!live.length) return { prNumber: null, fallback: null, edits };
 
-  const branch = await startBranch(github, { site, base, botLogin });
+  const branch = await startBranch(github, { site, base });
   const approved = await writeFile(github, { path: approvedPath, branch, site, proposals: live, message: `scriptsnitch: propose ${live.length} change${live.length === 1 ? '' : 's'} on ${host}` });
   const body = writeMarker(renderBody({ site, path: approvedPath, proposals: live, liveKeys, known: liveKeys, approved }), 'pr', { v: 1, site, keys: [...liveKeys], deferred: [] });
   try {

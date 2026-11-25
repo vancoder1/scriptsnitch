@@ -9,7 +9,8 @@ const WRITE = new Set(['write', 'maintain', 'admin']);
 
 export function createFakeGitHub(initial = {}) {
   const owner = initial.owner ?? 'acme';
-  const bot = { login: 'github-actions[bot]' };
+  // The token's account: github-actions[bot] for GITHUB_TOKEN, <app>[bot] for a GitHub App.
+  const bot = { login: initial.botLogin ?? 'github-actions[bot]' };
   let number = 0;
   let commentId = 0;
   let clock = Date.parse(initial.now ?? '2026-11-24T06:00:00Z');
@@ -18,7 +19,7 @@ export function createFakeGitHub(initial = {}) {
   const trees = {};
   const commits = {};
   // Commits made through the API with the job's token are authored by the bot, as on GitHub.
-  const commit = (tree, parents, message, author = 'github-actions[bot]') => {
+  const commit = (tree, parents, message, author = bot.login) => {
     const list = [parents].flat().filter(Boolean);
     const sha = hash(JSON.stringify([tree, list, message, clock]));
     trees[sha] = tree;

@@ -59,7 +59,7 @@ export async function handleComment({ event, github, approvedPath, botLogin = 'g
     return respond(`There is no pending proposal for ${code(key)} yet; the next scheduled run proposes it. Try again after that run.`, 'refused');
   }
 
-  const target = open?.head.ref ?? (await startBranch(github, { site, base, botLogin }));
+  const target = open?.head.ref ?? (await startBranch(github, { site, base }));
   try {
     await github.putContent(approvedPath, { text: serializeApproved(approvePending(approved, site, key, reason)), sha: file?.sha, branch: target, message: `scriptsnitch: approve ${key} (requested by ${user.login})` });
   } catch (e) {

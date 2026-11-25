@@ -66,7 +66,7 @@ function openCounts(siteStates, fallback) {
   return { high: active.filter((e) => e.severity === 'high').length, medium: active.filter((e) => e.severity === 'medium').length };
 }
 
-export async function report({ snapshotPath, outDir = dirname(snapshotPath), config, approved, approvedPath, github, dryRun = false, propose = 'pr', failOn = 'never', workflowFile = null, runId = null, runUrl = null, repoUrl = null, base = 'main', botLogin = 'github-actions[bot]', now = Date.now(), resolve, fetchImpl = fetch, summaryPath = process.env.GITHUB_STEP_SUMMARY }) {
+export async function report({ snapshotPath, outDir = dirname(snapshotPath), config, approved, approvedPath, github, dryRun = false, propose = 'pr', failOn = 'never', workflowFile = null, runId = null, runUrl = null, repoUrl = null, base = 'main', now = Date.now(), resolve, fetchImpl = fetch, summaryPath = process.env.GITHUB_STEP_SUMMARY }) {
   const summary = (text) => { if (summaryPath) try { appendFileSync(summaryPath, text); } catch { /* the summary is a convenience */ } };
   const { snapshot, failure } = loadSnapshot(snapshotPath);
   const status = await readStatus(github);
@@ -124,7 +124,7 @@ export async function report({ snapshotPath, outDir = dirname(snapshotPath), con
     }
     allProposals.push(...proposals);
     if (dryRun) continue;
-    const pr = await syncApprovalPr(github, { site, proposals, approvedPath, base, botLogin, propose });
+    const pr = await syncApprovalPr(github, { site, proposals, approvedPath, base, propose });
     prs[site] = pr.prNumber;
     const existing = sites.get(site);
     const siteResult = await reconcileSite(github, {

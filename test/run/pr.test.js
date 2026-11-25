@@ -135,3 +135,20 @@ test('a pull request from a fork, or on another branch, is never taken for the a
   assert.deepEqual(branchFile(gh).scripts.map((e) => e.id), ['chat-a', 'mine']);
   assert.equal((gh.state.comments[90] ?? []).length + (gh.state.comments[91] ?? []).length, 0);
 });
+
+test("commits made with a GitHub App token are the bot's, not a person's", async () => {
+  const gh = createFakeGitHub({ botLogin: 'shop-scriptsnitch[bot]', contents: { main: { [PATH]: baseFile() } } });
+  const { prNumber } = await sync(gh, [routine('a')]);
+  await sync(gh, [routine('a'), routine('b')]);
+  assert.deepEqual(branchFile(gh).scripts.map((e) => e.id), ['chat-a', 'chat-b', 'mine']);
+  assert.deepEqual(gh.state.comments[prNumber] ?? [], []);
+});
+
+test("a commit with no linked account counts as a person's", async () => {
+  const gh = fresh();
+  await sync(gh, [routine('a')]);
+  const edited = gh.file(PATH, BRANCH).replace(TODO, 'Chat widget for support');
+  gh.commitFile(PATH, edited, { branch: BRANCH, author: null });
+  await sync(gh, [routine('a'), routine('b')]);
+  assert.equal(gh.file(PATH, BRANCH), edited);
+});

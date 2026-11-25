@@ -39,6 +39,11 @@ test('two pages of one site that differ only in their query are refused, not mer
   assert.doesNotThrow(() => parse({ pages: [pages[0], { name: 'Other site', url: 'https://other.example/index.php?route=x' }] }));
 });
 
+test('notify takes user names and teams as org/team, nothing else', () => {
+  assert.deepEqual(parse({ ...minimal, notify: ['octocat', 'acme/security-team'] }).notify, ['octocat', 'acme/security-team']);
+  for (const bad of ['@octocat', 'a/b/c', 'acme/', 'two words']) assert.equal(pointerOf(() => parse({ ...minimal, notify: [bad] })), '/notify/0', bad);
+});
+
 test('rejects unknown fields with a pointer to them', () => {
   assert.equal(pointerOf(() => parse({ pages: [{ name: 'x', url: 'https://a.example/', sensitiv: true }] })), '/pages/0/sensitiv');
   assert.equal(pointerOf(() => parse({ ...minimal, concurency: 2 })), '/concurency');

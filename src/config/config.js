@@ -98,7 +98,7 @@ const config = {
   type: 'object',
   fields: {
     approved: { spec: string, default: 'scriptsnitch/approved.json' },
-    notify: { spec: { type: 'array', items: { type: 'string', pattern: /^[A-Za-z0-9-]+$/, patternMessage: 'notify lists GitHub user names' }, unique: true }, default: [] },
+    notify: { spec: { type: 'array', items: { type: 'string', pattern: /^[A-Za-z0-9-]+(?:\/[A-Za-z0-9_.-]+)?$/, patternMessage: 'notify lists GitHub user names, and teams as org/team' }, unique: true }, default: [] },
     profiles: { spec: { type: 'array', items: { type: 'string', enum: ['desktop', 'mobile'] }, minItems: 1, unique: true }, default: ['desktop', 'mobile'] },
     block: { spec: { type: 'array', items: { type: 'string', enum: ['image', 'media', 'font'] }, unique: true }, default: ['image', 'media', 'font'] },
     concurrency: { spec: { type: 'integer', min: 1, max: 16 }, default: 4 },

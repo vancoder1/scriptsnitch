@@ -19,6 +19,12 @@ test('parseJsonText reports the line and column of a syntax error', () => {
   assert.throws(() => parseJsonText('{\n  "a": 1,\n}', 'config.json'), (e) => e instanceof JsonSyntaxError && e.line === 3 && e.label === 'config.json');
 });
 
+test('parseJsonText refuses a key given twice in one object, and names its line', () => {
+  // A second "scripts" in a site would silently drop every approval in the first.
+  assert.throws(() => parseJsonText('{\r\n  "scripts": [1],\r\n  "scripts": []\r\n}', 'approved.json'), (e) => e instanceof JsonSyntaxError && e.line === 3 && /"scripts" appears twice/.test(e.message));
+  assert.deepEqual(parseJsonText('{"a": {"x": 1}, "b": {"x": 2}, "c": [{"x": 1}, {"x": 2}], "d": "\\"a\\": 1, \\"a\\""}', 'x.json').b, { x: 2 }, 'the same key in different objects, or inside a string, is fine');
+});
+
 test('parseJsonText accepts a BOM and CRLF line endings', () => {
   assert.deepEqual(parseJsonText('﻿{\r\n"a":1\r\n}', 'x'), { a: 1 });
 });

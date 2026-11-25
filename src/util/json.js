@@ -36,11 +36,39 @@ function positionOf(text, index) {
   return { line, column };
 }
 
-// Parses JSON written by a person: tolerates a BOM and CRLF, and names the line of an error.
+// The first key given twice in one object, with where it is; null when there is none. Runs on text
+// JSON.parse accepted, so the structure is known to be valid.
+function duplicateKey(text) {
+  const stack = [];
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === '{') stack.push({ keys: new Set(), expectKey: true });
+    else if (c === '[') stack.push(null);
+    else if (c === '}' || c === ']') stack.pop();
+    else if (c === ',' && stack.at(-1)) stack.at(-1).expectKey = true;
+    else if (c === ':' && stack.at(-1)) stack.at(-1).expectKey = false;
+    else if (c === '"') {
+      let j = i + 1;
+      while (text[j] !== '"') j += text[j] === '\\' ? 2 : 1;
+      const top = stack.at(-1);
+      if (top?.expectKey) {
+        const key = JSON.parse(text.slice(i, j + 1));
+        if (top.keys.has(key)) return { key, index: i };
+        top.keys.add(key);
+      }
+      i = j;
+    }
+  }
+  return null;
+}
+
+// Parses JSON written by a person: tolerates a BOM and CRLF, names the line of an error, and refuses
+// a key given twice in one object, where the second would silently replace the first.
 export function parseJsonText(text, label) {
   const clean = String(text).replace(/^﻿/, '');
+  let value;
   try {
-    return JSON.parse(clean);
+    value = JSON.parse(clean);
   } catch (err) {
     const pos = /position (\d+)/.exec(err.message);
     const lc = /line (\d+) column (\d+)/.exec(err.message);
@@ -48,4 +76,7 @@ export function parseJsonText(text, label) {
     const message = err.message.replace(/ in JSON at position \d+.*$/, '').replace(/ \(line \d+ column \d+\)$/, '');
     throw new JsonSyntaxError(message, { label, ...where });
   }
+  const dup = duplicateKey(clean);
+  if (dup) throw new JsonSyntaxError(`"${dup.key}" appears twice in one object; the second would replace the first`, { label, ...positionOf(clean, dup.index) });
+  return value;
 }
